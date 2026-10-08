@@ -15,7 +15,7 @@
     method: 0, reasons: [0, 2], goal: { name: '', amount: 0 },
     moods: {}, cravings: [], slips: [], name: ''
   };
-  var DEFAULT_SET = { notifMilestones: true, daily: true, dailyTime: '21:00', vibrate: true, currency: 'toman', autoUpdate: true };
+  var DEFAULT_SET = { notifMilestones: true, daily: true, dailyTime: '21:00', vibrate: true, currency: 'toman', autoUpdate: true, backupRemind: true };
   S.set = Object.assign({}, DEFAULT_SET, S.set || {});
   if (typeof S.seenMs !== 'number') S.seenMs = -1; // تعداد مراحلی که جشنشان نمایش داده شده (-۱ یعنی هنوز مقداردهی نشده)
 
@@ -112,7 +112,7 @@
 
   // ---------- اعلان‌ها ----------
   var LN = plugin('LocalNotifications');
-  var MS_ID = 100, DAILY_ID = 200;
+  var MS_ID = 100, DAILY_ID = 200, BACKUP_ID = 300;
   var MS_BODY = [
     '۲۰ دقیقه گذشت؛ ضربان قلب و فشار خون شما پایین آمده است.',
     '۱۲ ساعت شد! مونوکسید کربن خون شما به حد طبیعی برگشته است.',
@@ -142,10 +142,10 @@
   // همه‌ی اعلان‌های آینده را از نو تنظیم می‌کند
   function reschedule(askPermission) {
     if (!LN || !S.ready) return Promise.resolve();
-    var ids = [{ id: DAILY_ID }];
+    var ids = [{ id: DAILY_ID }, { id: BACKUP_ID }];
     for (var i = 0; i < MILESTONES.length; i++) ids.push({ id: MS_ID + i });
     return LN.cancel({ notifications: ids }).catch(function () {}).then(function () {
-      if (!S.set.notifMilestones && !S.set.daily) return;
+      if (!S.set.notifMilestones && !S.set.daily && !S.set.backupRemind) return;
       return notifPermission(askPermission).then(function (ok) {
         if (!ok) return;
         return ensureChannel().then(function () {
@@ -159,6 +159,10 @@
           if (S.set.daily) {
             var hm = S.set.dailyTime.split(':');
             list.push({ id: DAILY_ID, channelId: 'raha', title: 'رها', body: DAILY_MSG[Math.floor(Math.random() * DAILY_MSG.length)], schedule: { on: { hour: +hm[0], minute: +hm[1] }, allowWhileIdle: true }, extra: { go: 'home' } });
+          }
+          if (S.set.backupRemind) {
+            // جمعه‌ها ساعت ۲۰ (در افزونه: ۱ = یکشنبه … ۶ = جمعه)
+            list.push({ id: BACKUP_ID, channelId: 'raha', title: 'پشتیبان رها', body: 'یک پشتیبان از اطلاعاتتان در گوگل درایو، دراپ‌باکس یا وان‌درایو بگیرید تا چیزی از دست نرود.', schedule: { on: { weekday: 6, hour: 20, minute: 0 }, allowWhileIdle: true }, extra: { go: 'settings' } });
           }
           if (list.length) return LN.schedule({ notifications: list });
         });
@@ -314,6 +318,8 @@
       '<div style="font-size:13px;color:#C9D3CD">چند دقیقه با من بمان، می‌گذرد</div></div>' + I.chev + '</a>' +
       (nx ? '<a class="card" href="#health"><div class="row"><div class="muted">قدم بعدی بدن شما</div><div style="font-size:13px;font-weight:700;color:var(--green)">' + num(Math.floor(nx.p)) + '٪</div></div>' +
         '<div class="h2">' + nx.title + '</div><div class="bar"><div style="width:' + nx.p + '%"></div></div><div class="muted small">' + leftText(nx.left) + '</div></a>' : '') +
+      (S.ready && st.days >= 3 && (!S.lastBackup || Date.now() - S.lastBackup > 14 * 86400000)
+        ? '<a class="card" href="#settings" style="flex-direction:row;align-items:center;gap:12px;background:var(--amber-tint);color:var(--amber-ink)"><div class="col" style="flex:1"><div style="font-weight:700">از اطلاعاتتان پشتیبان بگیرید</div><div class="small">در گوگل درایو، دراپ‌باکس یا وان‌درایو، تا با عوض کردن گوشی چیزی از دست نرود</div></div>' + I.chev + '</a>' : '') +
       '<div class="card"><div class="row"><div class="h2">حال امروزت چطوره؟</div><div class="muted small">ثبت روزانه</div></div>' +
       '<div class="grid4">' + MOODS.map(function (m, i) { return '<button class="mood' + (mood === i ? ' on' : '') + '" data-mood="' + i + '">' + m + '</button>'; }).join('') + '</div></div>' +
       '</div>' + nav('home');
@@ -565,6 +571,94 @@
     return sum + moodCard + trigCard + timeCard + tip;
   }
 
+  // ---------- ویجت صفحه‌ی اصلی گوشی ----------
+  // اطلاعات لازم برای ویجت به بخش بومی اندروید فرستاده می‌شود؛ ویجت خودش هر ۳۰ دقیقه
+  // روزها، پول و نخ‌های نکشیده را از روی همین اعداد حساب می‌کند.
+  var widgetT = null;
+  function syncWidget() {
+    clearTimeout(widgetT);
+    widgetT = setTimeout(function () {
+      var W = null;
+      try { W = window.Capacitor && (window.Capacitor.Plugins.RahaWidget || (window.Capacitor.registerPlugin && window.Capacitor.registerPlugin('RahaWidget'))); } catch (e) {}
+      if (!W || !IS_NATIVE) return;
+      var data = {
+        ready: !!S.ready, quitAt: S.quitAt, cpd: S.cpd, costPerCig: costPerCig(),
+        rial: S.set.currency === 'rial',
+        milestones: MILESTONES.map(function (m) { return { t: m.t, title: m.title }; })
+      };
+      try { W.update({ data: JSON.stringify(data) }).catch(function () {}); } catch (e) {}
+    }, 300);
+  }
+
+  // ---------- پشتیبان‌گیری و بازگردانی ----------
+  var faDate = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: 'long', day: 'numeric' });
+  function backupStatus() {
+    if (!S.lastBackup) return 'هنوز پشتیبانی نگرفته‌اید';
+    var d = Math.floor((Date.now() - S.lastBackup) / 86400000);
+    return faDate.format(new Date(S.lastBackup)) + (d === 0 ? ' (امروز)' : ' (' + num(d) + ' روز پیش)');
+  }
+  function backupFileName() {
+    var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return 'raha-backup-' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '.json';
+  }
+  function makeBackup() {
+    S.lastBackupPrev = S.lastBackup;
+    S.lastBackup = Date.now();
+    var payload = JSON.stringify({ app: 'raha', v: 1, created: S.lastBackup, version: APP_VERSION.code || 0, data: S });
+    var name = backupFileName();
+    var FS = plugin('Filesystem'), SH = plugin('Share');
+    if (IS_NATIVE && FS && SH) {
+      FS.writeFile({ path: name, data: payload, directory: 'CACHE', encoding: 'utf8' })
+        .then(function (r) { return SH.share({ title: 'پشتیبان رها', text: 'فایل پشتیبان اپ رها', files: [r.uri], dialogTitle: 'کجا ذخیره شود؟' }); })
+        .then(function () { save(); toast('پشتیبان آماده شد'); render(); })
+        .catch(function (e) {
+          var msg = String(e && e.message || '');
+          if (/cancel/i.test(msg)) { toast('پشتیبان‌گیری لغو شد'); S.lastBackup = S.lastBackupPrev; return; }
+          toast('ساختن پشتیبان ممکن نشد');
+        });
+      return;
+    }
+    // نسخه‌ی مرورگر: دانلود فایل
+    try {
+      var blob = new Blob([payload], { type: 'application/json' }), a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      save(); toast('فایل پشتیبان دانلود شد'); render();
+    } catch (e) { toast('ساختن پشتیبان ممکن نشد'); }
+  }
+  function pickRestore() {
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.json,application/json,text/plain,*/*';
+    inp.style.display = 'none';
+    inp.onchange = function () {
+      var f = inp.files && inp.files[0]; inp.remove();
+      if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function () { restoreFrom(String(rd.result || '')); };
+      rd.onerror = function () { toast('خواندن فایل ممکن نشد'); };
+      rd.readAsText(f);
+    };
+    document.body.appendChild(inp); inp.click();
+  }
+  function restoreFrom(text) {
+    var obj = null;
+    try { obj = JSON.parse(text); } catch (e) {}
+    if (!obj || obj.app !== 'raha' || !obj.data || typeof obj.data !== 'object' || !obj.data.quitAt) { toast('این فایل، پشتیبان رها نیست'); return; }
+    var d = obj.data;
+    var days = Math.floor(Math.max(0, Date.now() - d.quitAt) / 86400000);
+    sheet('<div class="h2">بازگردانی این پشتیبان؟</div>' +
+      '<div class="muted" style="line-height:2">تاریخ پشتیبان: ' + faDate.format(new Date(obj.created || Date.now())) + '<br>شروع ترک: ' + faDate.format(new Date(d.quitAt)) + ' (' + num(days) + ' روز)' +
+      '<br>هوس‌های ثبت‌شده: ' + num((d.cravings || []).length) + '</div>' +
+      '<div class="muted small" style="line-height:1.9">اطلاعات فعلی این گوشی با اطلاعات پشتیبان جایگزین می‌شود.</div>' +
+      '<button class="primary" id="rs-ok">بازگردانی</button><button class="ghost" data-close>انصراف</button>', function (bg) {
+      bg.querySelector('#rs-ok').onclick = function () {
+        try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { toast('ذخیره ممکن نشد'); return; }
+        toast('اطلاعات بازگردانده شد');
+        setTimeout(function () { location.hash = '#home'; location.reload(); }, 600);
+      };
+    });
+  }
+
   // ---------- تنظیمات ----------
   function sw(key, on) {
     return '<button class="switch' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" data-toggle="' + key + '"><span></span></button>';
@@ -599,6 +693,14 @@
       setRow('نسخه‌ی فعلی', '', '<div class="muted" id="ver">' + (APP_VERSION.code ? fa(APP_VERSION.name) : APP_VERSION.name) + '</div>') +
       setRow('بررسی خودکار', 'روزی یک بار هنگام باز کردن اپ', sw('autoUpdate', st.autoUpdate)) +
       '<div class="srow"><button class="primary" data-act="update" style="min-height:48px;font-size:15px">بررسی به‌روزرسانی</button></div>' +
+      '</div>' +
+
+      '<div class="sec">پشتیبان‌گیری</div><div class="card sgroup">' +
+      '<div class="srow"><div class="col" style="flex:1"><div class="st">آخرین پشتیبان</div><div class="muted small">' + backupStatus() + '</div></div></div>' +
+      '<div class="srow" style="flex-direction:column;align-items:stretch;gap:10px"><button class="primary" data-act="backup" style="min-height:48px;font-size:15px">گرفتن پشتیبان</button>' +
+      '<button class="chip" data-act="restore" style="min-height:46px">بازگردانی از فایل پشتیبان</button>' +
+      '<div class="muted small" style="line-height:1.9">بعد از زدن «گرفتن پشتیبان»، از فهرستی که باز می‌شود گوگل درایو، دراپ‌باکس، وان‌درایو یا هر جای دیگری را انتخاب کنید. برای بازگردانی هم همان فایل را از همان‌جا انتخاب کنید.</div></div>' +
+      setRow('یادآوری هفتگی', 'جمعه‌ها یادتان می‌اندازیم پشتیبان بگیرید', sw('backupRemind', st.backupRemind)) +
       '</div>' +
 
       '<div class="sec">داده‌ها</div><div class="card sgroup">' +
@@ -705,12 +807,12 @@
     if (t.hasAttribute('data-toggle')) {
       var key = t.getAttribute('data-toggle'), on = !S.set[key];
       S.set[key] = on; save();
-      if (key === 'notifMilestones' || key === 'daily') {
+      if (key === 'notifMilestones' || key === 'daily' || key === 'backupRemind') {
         reschedule(on).then(function () { render(); });
       } else render();
       return;
     }
-    if (t.hasAttribute('data-cur')) { S.set.currency = t.getAttribute('data-cur'); save(); render(); return; }
+    if (t.hasAttribute('data-cur')) { S.set.currency = t.getAttribute('data-cur'); save(); syncWidget(); render(); return; }
     if (t.hasAttribute('data-url')) {
       var u = t.getAttribute('data-url');
       if (IS_NATIVE) location.href = u; else window.open(u, '_blank');
@@ -752,17 +854,19 @@
         S.name = draft.name; S.cpd = draft.cpd; S.perPack = draft.perPack; S.packPrice = draft.packPrice; S.buyType = draft.buyType; S.singlePrice = draft.singlePrice; S.pouchPrice = draft.pouchPrice; S.perPouch = draft.perPouch; S.rollExtra = draft.rollExtra;
         S.method = draft.method; S.reasons = draft.reasons.slice(); S.triggers = draft.triggers.slice(); S.quitAt = when;
         var first = !S.ready; S.ready = true; S.seenMs = -1; save(); draft = null;
-        reschedule(first);
+        reschedule(first); syncWidget();
         if (first) go('home'); else { toast('ذخیره شد'); go('settings'); }
         return;
       }
       case 'reset':
         sheet('<div class="h2">همه‌ی اطلاعات پاک شود؟</div><div class="muted">این کار برگشت‌پذیر نیست.</div>' +
           '<button class="primary" id="do-reset" style="background:#9B2C2C">بله، پاک کن</button><button class="ghost" data-close>انصراف</button>', function (bg) {
-          bg.querySelector('#do-reset').onclick = function () { S.ready = false; S.set.notifMilestones = S.set.daily = false; reschedule(false); try { localStorage.removeItem(KEY); } catch (x) {} if (LN) { var ids = [{ id: DAILY_ID }]; for (var q = 0; q < MILESTONES.length; q++) ids.push({ id: MS_ID + q }); LN.cancel({ notifications: ids }).catch(function () {}); } setTimeout(function () { location.hash = '#setup'; location.reload(); }, 300); };
+          bg.querySelector('#do-reset').onclick = function () { S.ready = false; S.set.notifMilestones = S.set.daily = false; reschedule(false); try { localStorage.removeItem(KEY); } catch (x) {} if (LN) { var ids = [{ id: DAILY_ID }, { id: BACKUP_ID }]; for (var q = 0; q < MILESTONES.length; q++) ids.push({ id: MS_ID + q }); LN.cancel({ notifications: ids }).catch(function () {}); } setTimeout(function () { location.hash = '#setup'; location.reload(); }, 300); };
         });
         return;
       case 'idea-done': S.ideaDone = S.ideaDone || {}; S.ideaDone[dayKey(Date.now())] = 1; save(); toast('عالی! همین کارهای کوچک جای سیگار را پر می‌کنند'); render(); return;
+      case 'backup': makeBackup(); return;
+      case 'restore': pickRestore(); return;
       case 'update': checkUpdate(false); return;
       case 'perm':
         notifPermission(true).then(function (ok) {
@@ -798,7 +902,7 @@
         sheet('<div class="h2">اشکالی ندارد، ادامه بده</div><div class="muted" style="line-height:1.9">یک لغزش به معنای شکست نیست. می‌خواهید شمارنده از همین الان دوباره شروع شود، یا فقط ثبت شود و شمارنده ادامه پیدا کند؟</div>' +
           '<button class="primary" id="slip-log">فقط ثبت کن</button><button class="primary" id="slip-reset" style="background:var(--ink)">شمارنده از نو</button><button class="ghost" data-close>انصراف</button>', function (bg) {
           bg.querySelector('#slip-log').onclick = function () { S.slips.push(Date.now()); save(); bg.remove(); go('home'); };
-          bg.querySelector('#slip-reset').onclick = function () { S.slips.push(Date.now()); S.quitAt = Date.now(); S.seenMs = -1; save(); reschedule(false); bg.remove(); go('home'); };
+          bg.querySelector('#slip-reset').onclick = function () { S.slips.push(Date.now()); S.quitAt = Date.now(); S.seenMs = -1; save(); reschedule(false); syncWidget(); bg.remove(); go('home'); };
         });
         return;
       case 'reasons':
@@ -845,6 +949,7 @@
   });
 
   window.addEventListener('hashchange', function () { document.querySelectorAll('.sheet-bg').forEach(function (x) { x.remove(); }); if (route() !== 'setup' && route() !== 'plan') draft = null; render(); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) syncWidget(); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden && /^(home|health|progress)$/.test(route())) render(); });
 
   // دکمه‌ی برگشت اندروید
@@ -869,7 +974,7 @@
   render();
 
   // کارهای هنگام باز شدن اپ
-  if (S.ready) reschedule(false);
+  if (S.ready) { reschedule(false); syncWidget(); }
   if (IS_NATIVE && S.ready && S.set.autoUpdate && (!S.lastUpdateCheck || Date.now() - S.lastUpdateCheck > 86400000)) {
     setTimeout(function () { checkUpdate(true); }, 3000);
   }
