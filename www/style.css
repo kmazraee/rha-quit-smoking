@@ -278,3 +278,42 @@ nav.tabs a{font-size:10.5px;white-space:nowrap}
 select.input{appearance:auto}
 .media-item{gap:10px}
 .media-ic{width:42px;height:42px;border-radius:12px;background:var(--green-tint);color:var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:10px}
+
+/* ---------- با هم ترک کنیم ---------- */
+.tg-head{position:relative}
+.tg-badge{position:absolute;top:-2px;left:-2px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#E5484D;color:#fff;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.tg-invite{flex-direction:row;align-items:center;gap:12px}
+.tg-ic{width:46px;height:46px;border-radius:14px;background:var(--green-tint);color:var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tg-ic.big{width:64px;height:64px;border-radius:20px}
+.tg-ic.big svg{width:32px;height:32px}
+.tg-hero{align-items:center;text-align:center;gap:12px;padding:24px 18px}
+.tg-list{margin:0;padding:0 18px 0 0;text-align:right;line-height:2.1;font-size:14px}
+.tg-row{display:flex;align-items:center;gap:10px}
+.tg-av{border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0}
+.tg-sos-btn{border:none;border-radius:24px;background:#C0533A;color:#fff;padding:18px 20px;display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:0 10px 24px rgba(192,83,58,.28);font-family:inherit}
+.tg-sos-btn b{font-size:18px}
+.tg-sos-btn span{font-size:13px;opacity:.9}
+.tg-sos-btn:disabled{background:#CBD3CE;box-shadow:none}
+.tg-me .tg-code{font-size:34px;font-weight:800;letter-spacing:6px;color:var(--green)}
+.tg-friend{gap:12px}
+.tg-friend.alarm{box-shadow:0 0 0 2px #E5484D inset}
+.tg-alarm{background:#FBE9E7;color:#8A2C1C;border-radius:12px;padding:8px 12px;font-size:13px;font-weight:700}
+.tg-days{font-size:15px}
+.tg-days b{font-size:30px;font-weight:800;color:var(--green);margin-left:4px}
+.tg-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;text-align:center}
+.tg-stats div{background:var(--ground);border-radius:12px;padding:8px 4px;display:flex;flex-direction:column;gap:2px}
+.tg-stats b{font-size:15px}
+.tg-stats span{font-size:10.5px;color:var(--muted);line-height:1.4}
+.tg-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--ground);border-radius:10px;padding:6px 10px;flex:1}
+.tg-chip i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.tg-online{display:inline-block;width:8px;height:8px;border-radius:4px;background:#30A46C;margin-left:6px;vertical-align:middle}
+.tg-sos-pill{background:#FBE9E7;color:#8A2C1C;font-size:12px;font-weight:700;border-radius:10px;padding:4px 10px}
+.tg-ev{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.tg-ev:last-child{border-bottom:none}
+.tg-ev-ic{width:30px;height:30px;border-radius:15px;background:var(--green-tint);color:var(--green);display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0}
+.tg-ev.ev-sos .tg-ev-ic{background:#FBE9E7;color:#C0533A}
+.tg-ev.ev-milestone .tg-ev-ic{background:var(--amber-tint);color:var(--amber-ink)}
+.tg-cheer-opt{min-height:50px;border:1px solid var(--line);background:#fff;border-radius:14px;font-size:15px;text-align:right;padding:0 16px;font-family:inherit;color:var(--ink)}
+.tg-cheer-opt:active{background:var(--green-tint)}
+.tg-sos-ic{width:56px;height:56px;border-radius:28px;background:#FBE9E7;color:#C0533A;font-size:30px;font-weight:800;display:flex;align-items:center;justify-content:center;align-self:center}
+@media (max-width:360px){.tg-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}

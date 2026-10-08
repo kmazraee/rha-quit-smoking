@@ -30,9 +30,11 @@ jobs:
         run: npm ci
 
       - name: ساخت پروژه‌ی اندروید
+        shell: bash
         env:
           N: ${{ github.run_number }}
         run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/build.log") 2>&1
           echo "{\"code\": $N, \"name\": \"0.1.$N\", \"store\": \"bazaar\"}" > www/version.json
           node scripts/prepare.mjs
           npx cap add android
@@ -45,15 +47,17 @@ jobs:
           RAHA_KEY_PASS: ${{ secrets.RAHA_KEY_PASS }}
         run: |
           if [ -z "$RAHA_KEY_PASS" ]; then
-            echo "رمز کلید امضا (RAHA_KEY_PASS) در Secrets مخزن تعریف نشده است."; exit 1
+            echo "رمز کلید امضا (RAHA_KEY_PASS) در Secrets مخزن تعریف نشده است." | tee -a build.log; exit 1
           fi
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in signing/release.keystore.enc -out signing/release.keystore -pass env:RAHA_KEY_PASS
 
       - name: ساخت فایل APK
         working-directory: android
+        shell: bash
         env:
           RAHA_KEY_PASS: ${{ secrets.RAHA_KEY_PASS }}
         run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/build.log") 2>&1
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk ../raha-v0.1.${{ github.run_number }}.apk
@@ -74,3 +78,14 @@ jobs:
           name: رها — نسخه‌ی آزمایشی ${{ github.run_number }}
           body: فایل APK را روی گوشی اندروید دانلود و نصب کنید.
           files: raha-v0.1.*.apk
+
+      # اگر ساخت شکست خورد، گزارش کامل خطا به‌صورت یک انتشار آزمایشی ذخیره می‌شود تا بشود علت را خواند
+      - name: ذخیره‌ی گزارش خطا
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-log-${{ github.run_number }}
+          name: گزارش خطای ساخت ${{ github.run_number }}
+          prerelease: true
+          body: ساخت شماره‌ی ${{ github.run_number }} شکست خورد؛ فایل build.log علت را نشان می‌دهد.
+          files: build.log

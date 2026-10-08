@@ -1,0 +1,8 @@
+{
+  "platform": "node",
+  "app": "raha-api",
+  "port": 3000,
+  "node": { "version": "22" },
+  "build": { "location": "iran" },
+  "disks": [{ "name": "data", "mountTo": "data" }]
+}

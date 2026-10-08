@@ -61,6 +61,22 @@ if (!manifest.includes('.RahaWidget"')) {
   console.log('manifest: widget receiver added');
 }
 
+// ۳-ب) سرویس پس‌زمینه‌ی «با هم ترک کنیم» و اجازه‌ی شروع دوباره بعد از روشن شدن گوشی
+manifest = fs.readFileSync(manifestPath, 'utf8');
+if (!manifest.includes('.RahaFriendsJob"')) {
+  manifest = manifest.replace('</application>', `
+        <service
+            android:name=".RahaFriendsJob"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+    </application>`);
+  console.log('manifest: friends job service added');
+}
+if (!manifest.includes('android.permission.RECEIVE_BOOT_COMPLETED')) {
+  manifest = manifest.replace('</manifest>', '    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n</manifest>');
+}
+fs.writeFileSync(manifestPath, manifest);
+
 // ۴) شماره‌ی نسخه
 const gradlePath = path.join(android, 'build.gradle');
 let gradle = fs.readFileSync(gradlePath, 'utf8');

@@ -1,0 +1,35 @@
+name: استقرار سرور «با هم»
+
+# فقط با دستور: دکمه‌ی Run workflow در تب Actions، یا فرستادن کد به شاخه‌ی deploy-server
+on:
+  workflow_dispatch:
+  push:
+    branches: [deploy-server]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: آزمون خودکار سرور
+        run: npm test
+
+      - name: استقرار در لیارا
+        env:
+          LIARA_API_TOKEN: ${{ secrets.LIARA_API_TOKEN }}
+          LIARA_APP: ${{ vars.LIARA_APP }}
+        run: |
+          if [ -z "$LIARA_API_TOKEN" ]; then
+            echo "توکن لیارا (LIARA_API_TOKEN) در Secrets مخزن تعریف نشده است."; exit 1
+          fi
+          APP_ARG=""
+          if [ -n "$LIARA_APP" ]; then APP_ARG="--app $LIARA_APP"; fi
+          npx -y @liara/cli@9 deploy --api-token "$LIARA_API_TOKEN" $APP_ARG --port 3000 --no-app-logs

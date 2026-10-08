@@ -221,6 +221,7 @@
     heart: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></svg>',
     breath: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>',
     chart: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+    users: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 20a6.5 6.5 0 0 0-3-5.5"/></svg>',
     user: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
     drop: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.7l5.7 5.7a8 8 0 1 1-11.3 0z"/></svg>',
     timer: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg>',
@@ -344,7 +345,7 @@
     return '<div class="screen">' +
       '<div class="row"><div class="col"><div class="muted">' + esc(todayFa.format(new Date())) + '</div>' +
       '<div class="h1">سلام' + (S.name ? '، ' + esc(S.name) : '') + '</div></div>' +
-      '<a class="icon-btn" href="#settings" aria-label="تنظیمات اعلان‌ها">' + I.bell + '</a></div>' +
+      '<div style="display:flex;gap:8px">' + (API.togetherIcon ? API.togetherIcon() : '') + '<a class="icon-btn" href="#settings" aria-label="تنظیمات اعلان‌ها">' + I.bell + '</a></div></div>' +
       (hero ? hero : '<div class="hero"><div style="font-size:14px;font-weight:500;opacity:.9">مدت زمانی که سیگار نکشیده‌اید</div>' +
       '<div class="units"><div class="unit"><div class="big" id="c-d">۰</div><div class="lbl">روز</div></div>' +
       '<div class="unit"><div class="mid" id="c-h">۰۰</div><div class="lbl">ساعت</div></div>' +
@@ -360,6 +361,7 @@
         (pledged ? '<div class="pledge-ok">✓</div>' : '<button class="chip on" data-act="pledge">متعهدم</button>') + '</div>' : '') +
       '<a class="sos" href="#sos"><div class="ic">' + I.flame + '</div><div class="col" style="flex:1"><div style="font-size:17px;font-weight:700">هوس سیگار دارم</div>' +
       '<div style="font-size:13px;color:#C9D3CD">چند دقیقه با من بمان، می‌گذرد</div></div>' + I.chev + '</a>' +
+      (API.togetherCard ? API.togetherCard() : '') +
       (nx ? '<a class="card" href="#health"><div class="row"><div class="muted">قدم بعدی بدن شما</div><div style="font-size:13px;font-weight:700;color:var(--green)">' + num(Math.floor(nx.p)) + '٪</div></div>' +
         '<div class="h2">' + nx.title + '</div><div class="bar"><div style="width:' + nx.p + '%"></div></div><div class="muted small">' + leftText(nx.left) + '</div></a>' : '') +
       (S.ready && st.days >= 3 && (!S.lastBackup || Date.now() - S.lastBackup > 14 * 86400000)
@@ -395,6 +397,7 @@
       '<button class="alt" data-act="reasons">' + I.heart + 'دلیل‌هایم برای ترک</button>' +
       '<button class="alt" data-act="wait">' + I.timer + 'فقط ۵ دقیقه صبر</button>' +
       '<button class="alt" data-act="walk">' + I.walk + 'یک قدم‌زدن کوتاه</button>' +
+      (API.togetherSosButton ? API.togetherSosButton() : '') +
       '<a class="alt" href="#game">' + I.breath + 'بازی یک‌دقیقه‌ای</a>' +
       '<button class="alt" data-act="card">' + I.spark + 'کارت انگیزشی</button>' +
       '<a class="alt" href="#thoughts">' + I.heart + 'این فکر را بررسی کن</a>' +
@@ -939,7 +942,7 @@
       case 'reset':
         sheet('<div class="h2">همه‌ی اطلاعات پاک شود؟</div><div class="muted">این کار برگشت‌پذیر نیست.</div>' +
           '<button class="primary" id="do-reset" style="background:#9B2C2C">بله، پاک کن</button><button class="ghost" data-close>انصراف</button>', function (bg) {
-          bg.querySelector('#do-reset').onclick = function () { S.ready = false; S.set.notifMilestones = S.set.daily = false; reschedule(false); try { localStorage.removeItem(KEY); } catch (x) {} if (LN) { var ids = [{ id: DAILY_ID }, { id: BACKUP_ID }]; for (var q = 0; q < MILESTONES.length; q++) ids.push({ id: MS_ID + q }); LN.cancel({ notifications: ids }).catch(function () {}); } setTimeout(function () { location.hash = '#setup'; location.reload(); }, 300); };
+          bg.querySelector('#do-reset').onclick = function () { if (API.onReset) API.onReset(); S.ready = false; S.set.notifMilestones = S.set.daily = false; reschedule(false); try { localStorage.removeItem(KEY); } catch (x) {} if (LN) { var ids = [{ id: DAILY_ID }, { id: BACKUP_ID }]; for (var q = 0; q < MILESTONES.length; q++) ids.push({ id: MS_ID + q }); LN.cancel({ notifications: ids }).catch(function () {}); } setTimeout(function () { location.hash = '#setup'; location.reload(); }, 300); };
         });
         return;
       case 'idea-done': S.ideaDone = S.ideaDone || {}; S.ideaDone[dayKey(Date.now())] = 1; save(); toast('عالی! همین کارهای کوچک جای سیگار را پر می‌کنند'); render(); return;
@@ -1054,9 +1057,11 @@
     go: go, route: route, render: render, nav: nav, I: I, VIEWS: VIEWS, AFTER: AFTER,
     onLeave: function (f) { leaveHooks.push(f); },
     TRIGGERS: TRIGGERS, MILESTONES: MILESTONES, dayKey: dayKey, stats: stats, plugin: plugin, IS_NATIVE: IS_NATIVE,
+    MOODS: MOODS, MOOD_COLORS: MOOD_COLORS,
     shortMoney: shortMoney, cur: cur, copy: function (t) { try { navigator.clipboard.writeText(t).then(function () { toast('کپی شد'); }); } catch (e) {} }
   };
   if (window.RAHA_EXTRAS) { try { window.RAHA_EXTRAS(API); } catch (e) { console.error(e); } }
+  if (window.RAHA_TOGETHER) { try { window.RAHA_TOGETHER(API); } catch (e) { console.error(e); } }
   if (window.RAHA_LIB) { try { window.RAHA_LIB(API); } catch (e) { console.error(e); } }
   if (window.RAHA_STATS) { try { window.RAHA_STATS(API); } catch (e) { console.error(e); } }
 
