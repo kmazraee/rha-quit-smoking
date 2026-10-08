@@ -1,11 +1,11 @@
 name: ساخت APK اندروید
 
 # فقط وقتی دستور ساخت داده شود اجرا می‌شود:
-# یا از صفحه‌ی Actions با دکمه‌ی Run workflow، یا با فرستادن برچسبی که با build- شروع شود
+# یا از صفحه‌ی Actions با دکمه‌ی Run workflow، یا با فرستادن کد به شاخه‌ی build
 on:
   workflow_dispatch:
   push:
-    tags: ['build-*']
+    branches: [build]
 
 permissions:
   contents: write
