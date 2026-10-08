@@ -276,3 +276,5 @@ nav.tabs a{font-size:10.5px;white-space:nowrap}
 .pledge.on{background:var(--green-tint)}
 .pledge-ok{width:40px;height:40px;border-radius:20px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
 select.input{appearance:auto}
+.media-item{gap:10px}
+.media-ic{width:42px;height:42px;border-radius:12px;background:var(--green-tint);color:var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:10px}

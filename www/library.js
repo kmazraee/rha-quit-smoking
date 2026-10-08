@@ -67,8 +67,35 @@ window.RAHA_LIB = function (A) {
     return k;
   }
 
+  // ---------- ویدیو، پادکست و مقاله‌ی فارسی (www/media.json) ----------
+  var MEDIA = null;
+  function loadMedia() {
+    if (MEDIA) return Promise.resolve(MEDIA);
+    return fetch('media.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : { items: [] }; })
+      .catch(function () { return { items: [] }; }).then(function (m) { MEDIA = (m && m.items) || []; return MEDIA; });
+  }
+  var libTab = 'books';
+  var TABS_L = [['books', 'کتاب‌ها'], ['video', 'ویدیو'], ['podcast', 'پادکست'], ['article', 'مقاله']];
+  function mediaList(type) {
+    if (!MEDIA) { loadMedia().then(function () { if (A.route() === 'library') A.render(); }); return '<div class="muted">در حال بارگذاری…</div>'; }
+    var list = MEDIA.filter(function (m) { return m.type === type || (type === 'podcast' && m.type === 'audiobook'); });
+    if (!list.length) return '<div class="muted">هنوز موردی اضافه نشده است.</div>';
+    var icon = type === 'video' ? A.I.play : type === 'podcast' ? A.I.headphones : A.I.bookOpen;
+    return list.map(function (m) {
+      return '<div class="card media-item"><div class="row" style="align-items:flex-start"><div class="media-ic">' + icon + '</div>' +
+        '<div class="col" style="flex:1;gap:4px"><div style="font-size:15px;font-weight:700;line-height:1.7">' + esc(m.title) + '</div>' +
+        '<div class="muted small">' + esc(m.source || '') + '</div>' +
+        (m.note ? '<div class="small" style="line-height:1.8">' + esc(m.note) + '</div>' : '') + '</div></div>' +
+        '<div class="row"><div class="lib-tags"><span>' + esc(m.platform || '') + '</span>' + (m.type === 'audiobook' ? '<span style="background:var(--amber-tint);color:var(--amber-ink)">کتاب صوتی</span>' : '') + '</div>' +
+        '<button class="chip on" data-url="' + esc(m.url) + '">' + (type === 'article' ? 'خواندن' : type === 'video' ? 'تماشا' : 'شنیدن') + '</button></div></div>';
+    }).join('') + '<div class="muted small" style="line-height:1.9">این محتواها در سایت سازندگانشان باز می‌شوند و ممکن است به اینترنت نیاز داشته باشند. مسئولیت محتوا با سازنده‌ی آن است.</div>';
+  }
+
   // ---------- صفحه‌ی کتابخانه ----------
   VIEWS.library = function () {
+    if (libTab !== 'books') {
+      return '<div class="screen"><div class="h1">کتابخانه</div>' + libTabs() + mediaList(libTab) + '</div>' + A.nav('library');
+    }
     if (!BOOKS) { loadBooks().then(function () { if (A.route() === 'library') A.render(); }); return '<div class="screen"><div class="h1">کتابخانه</div><div class="muted">در حال بارگذاری…</div></div>' + A.nav('library'); }
     var list = BOOKS;
     var body = !list.length
@@ -81,9 +108,16 @@ window.RAHA_LIB = function (A) {
             '<div class="lib-tags">' + kinds(b).map(function (k) { return '<span>' + k + '</span>'; }).join('') + '</div>' +
             (pl ? '<div class="muted small">' + pl + '</div>' : '') + '</a>';
         }).join('') + '</div>';
-    return '<div class="screen"><div class="h1">کتابخانه</div>' +
-      '<div class="muted" style="margin-top:-8px">کتاب‌ها و کتاب‌های صوتی برای همراهی در مسیر ترک</div>' + body + '</div>' + A.nav('library');
+    return '<div class="screen"><div class="h1">کتابخانه</div>' + libTabs() +
+      '<div class="muted">کتاب‌ها و کتاب‌های صوتی برای همراهی در مسیر ترک</div>' + body + '</div>' + A.nav('library');
   };
+  function libTabs() {
+    return '<div class="seg">' + TABS_L.map(function (t) { return '<button style="flex:1" data-ltab="' + t[0] + '" class="' + (libTab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div>';
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-ltab]'); if (!t) return;
+    libTab = t.getAttribute('data-ltab'); A.render();
+  });
 
   // ---------- صفحه‌ی هر کتاب ----------
   function markLine(b, m, i) {

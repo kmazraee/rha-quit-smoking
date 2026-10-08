@@ -1,0 +1,109 @@
+{
+  "_راهنما": "فهرست ویدیوها، پادکست‌ها و مقاله‌های فارسی درباره‌ی ترک سیگار. هر مورد: type (video | podcast | article | audiobook)، title، source (نام سازنده یا سایت)، platform (آپارات، تماشا، شنوتو، …)، url، note (توضیح کوتاه). برای اضافه کردن، یک مورد مثل بقیه بنویسید.",
+  "items": [
+    {
+      "type": "video",
+      "title": "ترک سیگار و روش‌های آن",
+      "source": "مشاوره روانشناسی حامی هنر زندگی",
+      "platform": "تماشا",
+      "url": "https://tamasha.com/v/5N9mG",
+      "note": "توضیح روان‌شناس درباره‌ی روش‌های ترک"
+    },
+    {
+      "type": "video",
+      "title": "چگونه سیگار را ترک کنیم؟",
+      "source": "موج رشد — فاطمه مهدی‌خانی، مربی مهارت‌های زندگی",
+      "platform": "تماشا",
+      "url": "https://tamasha.com/v/ZMG8b",
+      "note": "یک راهکار عملی برای ساختن عادت‌های خوب به‌جای سیگار"
+    },
+    {
+      "type": "video",
+      "title": "بعد از قطع سیگار چه اتفاقی می‌افتد؟",
+      "source": "دکتر اردا کیانی",
+      "platform": "وب‌سایت",
+      "url": "https://drardakiani.com/what-happens-after-you-quit-smoking/",
+      "note": "تغییرات بدن و علائم ترک نیکوتین"
+    },
+    {
+      "type": "video",
+      "title": "ترک سیگار و قلیان از نگاه علوم اعصاب (هوبرمن)",
+      "source": "سوخت جت",
+      "platform": "وب‌سایت",
+      "url": "https://sookhtejet.com/how-to-quit-smoking-vaping-or-dipping-tobacco/",
+      "note": "پشت‌پرده‌ی روانی و زیستی اعتیاد به نیکوتین"
+    },
+    {
+      "type": "video",
+      "title": "کلینیک ترک سیگار بیمارستان شریعتی",
+      "source": "دانشگاه علوم پزشکی تهران",
+      "platform": "ویدبید",
+      "url": "https://www.vidbid.ir/video/1030501/%DA%A9%D9%84%DB%8C%D9%86%DB%8C%DA%A9-%D8%AA%D8%B1%DA%A9-%D8%B3%DB%8C%DA%AF%D8%A7%D8%B1-%D8%AF%D8%B1-%D8%A8%DB%8C%D9%85%D8%A7%D8%B1%D8%B3%D8%AA%D8%A7%D9%86-%D8%B4%D8%B1%DB%8C%D8%B9%D8%AA%DB%8C-%D8%AF%D8%A7%D9%86%D8%B4%DA%AF%D8%A7%D9%87-%D8%B9%D9%84%D9%88%D9%85-%D9%BE%D8%B2%D8%B4%DA%A9%DB%8C-%D8%AA%D9%87%D8%B1%D8%A7%D9%86",
+      "note": "معرفی برنامه‌ی ترک با تیم متخصص ریه، روان‌پزشک و داروساز"
+    },
+    {
+      "type": "podcast",
+      "title": "پادکست ترک سیگار",
+      "source": "مهرداد تربتی — ترک بعد از ۲۲ سال",
+      "platform": "شنوتو",
+      "url": "https://shenoto.com/channel/podcast/tarkecigar",
+      "note": "ترک سیگار به روش درمان شناختی-رفتاری و تجربه‌ی شخصی"
+    },
+    {
+      "type": "podcast",
+      "title": "رهایی از سیگار",
+      "source": "پادکست داروچی — دکتر میرمحمدی، داروساز",
+      "platform": "شنوتو",
+      "url": "https://shenoto.com/album/podcast/227575/%D8%B1%D9%87%D8%A7%DB%8C%DB%8C-%D8%A7%D8%B2-%D8%B3%DB%8C%DA%AF%D8%A7%D8%B1-%D8%AA%D8%B1%DA%A9-%D8%B3%DB%8C%DA%AF%D8%A7%D8%B1",
+      "note": "مرور همه‌ی راه‌های ترک از نگاه یک داروساز"
+    },
+    {
+      "type": "podcast",
+      "title": "دویدن چطور به ترک عادت‌هایی مثل سیگار کمک می‌کند",
+      "source": "پادکست رانیو — قسمت ۲۳",
+      "platform": "شنوتو",
+      "url": "https://shenoto.com/album/podcast/35581/%D9%82%D8%B3%D9%85%D8%AA-%D8%A8%DB%8C%D8%B3%D8%AA-%D9%88-%D8%B3%D9%88%D9%85-%D8%AF%D9%88%DB%8C%D8%AF%D9%86-%DA%86%D8%B7%D9%88%D8%B1-%D8%A8%D9%87-%D8%AA%D8%B1%DA%A9-%D8%B9%D8%A7%D8%AF%D8%AA-%D9%87%D8%A7%DB%8C-%D9%BE%DB%8C%DA%86%DB%8C%D8%AF%D9%87-%D9%85%D8%AB%D9%84-%D8%B3%DB%8C%DA%AF%D8%A7%D8%B1-%DA%A9%D8%B4%DB%8C%D8%AF%D9%86-%DA%A9%D9%85%DA%A9-%D9%85%DB%8C-%DA%A9%D9%86%D8%AF",
+      "note": "ورزش به‌عنوان جایگزین سیگار و اهمیت ثبت پیشرفت"
+    },
+    {
+      "type": "audiobook",
+      "title": "کتاب صوتی ترک آسان سیگار (آلن کار)",
+      "source": "نوین کتاب گویا — گوینده: علی همت مومیوند",
+      "platform": "کتابراه",
+      "url": "https://ketabrah.com/audiobook/43361-%DA%A9%D8%AA%D8%A7%D8%A8-%D8%B5%D9%88%D8%AA%DB%8C-%D8%AA%D8%B1%DA%A9-%D8%A2%D8%B3%D8%A7%D9%86-%D8%B3%DB%8C%DA%AF%D8%A7%D8%B1",
+      "note": "پرفروش‌ترین کتاب ترک سیگار؛ نسخه‌ی قانونی و پولی"
+    },
+    {
+      "type": "article",
+      "title": "درمان شناختی-رفتاری برای ترک سیگار",
+      "source": "دکتر ندا فرزانه، متخصص اعصاب و روان",
+      "platform": "وب‌سایت",
+      "url": "https://drnedafarzaneh.com/%D8%AF%D8%B1%D9%85%D8%A7%D9%86-%D8%B4%D9%86%D8%A7%D8%AE%D8%AA%DB%8C-%D8%B1%D9%81%D8%AA%D8%A7%D8%B1%DB%8C-%D8%AA%D8%B1%DA%A9-%D8%B3%DB%8C%DA%AF%D8%A7%D8%B1/",
+      "note": "اصول درمان شناختی-رفتاری و عوامل بازگشت"
+    },
+    {
+      "type": "article",
+      "title": "درمان‌های ترک سیگار: جایگزین نیکوتین و داروها",
+      "source": "دکتر محمد والی‌پور، متخصص روان‌پزشکی",
+      "platform": "وب‌سایت",
+      "url": "http://www.drvalipour.ir/index.php?AID=6919&ToDo=ShowArticles",
+      "note": "آدامس، چسب، قرص مکیدنی و داروهای تجویزی"
+    },
+    {
+      "type": "article",
+      "title": "آیا مشاوره‌ی تلفنی به ترک سیگار کمک می‌کند؟",
+      "source": "کاکرین (خلاصه‌ی فارسی مرور علمی)",
+      "platform": "Cochrane",
+      "url": "https://www.cochrane.org/fa/evidence/CD002850_does-telephone-counselling-help-people-stop-smoking",
+      "note": "شواهد علمی درباره‌ی خطوط مشاوره‌ی ترک"
+    },
+    {
+      "type": "article",
+      "title": "بهترین نکات برای ترک سیگار",
+      "source": "مجله‌ی سلامت دکترتو",
+      "platform": "وب‌سایت",
+      "url": "https://doctoreto.com/blog/quit-smoking/",
+      "note": "روش‌های رفتاری، دارویی و حمایتی ترک"
+    }
+  ]
+}
