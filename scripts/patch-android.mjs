@@ -65,14 +65,15 @@ if (!manifest.includes('.RahaWidget"')) {
 const gradlePath = path.join(android, 'build.gradle');
 let gradle = fs.readFileSync(gradlePath, 'utf8');
 gradle = gradle.replace(/versionCode \d+/, `versionCode ${build}`).replace(/versionName "[^"]*"/, `versionName "0.1.${build}"`);
-// ۵) نسخه‌ی release (نه debug) با همان کلید امضای ثابت، تا روی نسخه‌های قبلی نصب شود
+// ۵) نسخه‌ی release با کلید امضای خصوصی رها (رمز از متغیر محیطی RAHA_KEY_PASS می‌آید و در مخزن نیست)
 if (!gradle.includes('rahaRelease')) {
   gradle = gradle.replace('    buildTypes {', `    signingConfigs {
         rahaRelease {
-            storeFile rootProject.file('../signing/debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
+            storeFile rootProject.file('../signing/release.keystore')
+            storeType 'pkcs12'
+            storePassword System.getenv('RAHA_KEY_PASS')
+            keyAlias 'raha'
+            keyPassword System.getenv('RAHA_KEY_PASS')
         }
     }
     buildTypes {`);

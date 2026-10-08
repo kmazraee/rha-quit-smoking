@@ -751,8 +751,10 @@
 
       '<div class="sec">به‌روزرسانی</div><div class="card sgroup">' +
       setRow('نسخه‌ی فعلی', '', '<div class="muted" id="ver">' + (APP_VERSION.code ? fa(APP_VERSION.name) : APP_VERSION.name) + '</div>') +
-      setRow('بررسی خودکار', 'روزی یک بار هنگام باز کردن اپ', sw('autoUpdate', st.autoUpdate)) +
-      '<div class="srow"><button class="primary" data-act="update" style="min-height:48px;font-size:15px">بررسی به‌روزرسانی</button></div>' +
+      (APP_VERSION.store === 'bazaar'
+        ? '<div class="srow"><div class="muted small" style="flex:1;line-height:1.9">نسخه‌های تازه از طریق کافه‌بازار می‌رسند.</div><button class="chip on" data-url="bazaar://details?id=com.rha.quitsmoking">کافه‌بازار</button></div>'
+        : setRow('بررسی خودکار', 'روزی یک بار هنگام باز کردن اپ', sw('autoUpdate', st.autoUpdate)) +
+          '<div class="srow"><button class="primary" data-act="update" style="min-height:48px;font-size:15px">بررسی به‌روزرسانی</button></div>') +
       '</div>' +
 
       '<div class="sec">پشتیبان‌گیری</div><div class="card sgroup">' +
@@ -766,7 +768,8 @@
       '<div class="sec">داده‌ها</div><div class="card sgroup">' +
       '<div class="srow"><button class="ghost" data-act="reset" style="color:#9B2C2C;text-decoration:none;font-weight:700;padding:0">پاک کردن همه‌ی اطلاعات</button></div>' +
       '</div>' +
-      '<div class="muted small" style="text-align:center;padding:8px 0">رها — همراه شما برای زندگی بدون سیگار</div>' +
+      '<a class="muted small" href="#privacy" style="text-align:center;text-decoration:underline;padding:4px 0">حریم خصوصی</a>' +
+      '<div class="muted small" style="text-align:center;padding:8px 0">رها — همراه شما برای زندگی بدون سیگار' + (APP_VERSION.code ? ' · نسخه‌ی ' + fa(APP_VERSION.name) : '') + '</div>' +
       '</div>' + nav('settings');
   };
   AFTER.settings = function () {
@@ -1041,7 +1044,7 @@
     if (App) App.addListener('backButton', function () {
       var open = document.querySelector('.sheet-bg');
       if (open) { open.remove(); return; }
-      if (route() === 'home' || (!S.ready && route() === 'setup')) App.exitApp(); else go(({ plan: 'settings', stats: 'health', game: 'sos', thoughts: 'sos', cravings: 'progress', badges: 'progress' })[route()] || (API.backFor && API.backFor(route())) || 'home');
+      if (route() === 'home' || (!S.ready && route() === 'setup')) App.exitApp(); else go(({ plan: 'settings', privacy: 'settings', stats: 'health', game: 'sos', thoughts: 'sos', cravings: 'progress', badges: 'progress' })[route()] || (API.backFor && API.backFor(route())) || 'home');
     });
   } catch (e) {}
 
@@ -1062,6 +1065,6 @@
   // کارهای هنگام باز شدن اپ
   if (S.ready) { reschedule(false); syncWidget(); }
   if (IS_NATIVE && S.ready && S.set.autoUpdate && (!S.lastUpdateCheck || Date.now() - S.lastUpdateCheck > 86400000)) {
-    setTimeout(function () { checkUpdate(true); }, 3000);
+    setTimeout(function () { if (APP_VERSION.store !== 'bazaar') checkUpdate(true); }, 3000);
   }
 })();

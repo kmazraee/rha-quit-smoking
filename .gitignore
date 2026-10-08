@@ -3,3 +3,4 @@ node_modules/
 *.apk
 www/lib/
 www/books/books.json
+signing/release.keystore
