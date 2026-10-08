@@ -237,11 +237,12 @@
     skipNext: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14l10-7z"/><rect x="17.5" y="5" width="2.5" height="14" rx="1"/></svg>',
     fwd: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/><text x="12" y="15.5" font-size="7.5" text-anchor="middle" fill="currentColor" stroke="none" font-family="sans-serif" font-weight="700">15</text></svg>',
     rew: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v4h4"/><text x="12" y="15.5" font-size="7.5" text-anchor="middle" fill="currentColor" stroke="none" font-family="sans-serif" font-weight="700">15</text></svg>',
+    spark: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/></svg>',
     walk: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 3v3M7 12l3-4 4 2 3 3"/></svg>'
   };
 
   // ---------- ناوبری ----------
-  var TABS = [['home', 'خانه', I.home], ['health', 'سلامتی', I.heart], ['library', 'کتابخانه', I.book], ['progress', 'داشبورد', I.chart], ['settings', 'تنظیمات', I.gear]];
+  var TABS = [['home', 'خانه', I.home], ['health', 'سلامتی', I.heart], ['instead', 'به‌جاش', I.spark], ['library', 'کتابخانه', I.book], ['progress', 'داشبورد', I.chart], ['settings', 'تنظیمات', I.gear]];
   function nav(active) {
     return '<nav class="tabs">' + TABS.map(function (t) {
       return '<a href="#' + t[0] + '" class="' + (t[0] === active ? 'on' : '') + '">' + t[2] + t[1] + '</a>';
@@ -341,7 +342,7 @@
       '<button class="alt" data-act="reasons">' + I.heart + 'دلیل‌هایم برای ترک</button>' +
       '<button class="alt" data-act="wait">' + I.timer + 'فقط ۵ دقیقه صبر</button>' +
       '<button class="alt" data-act="walk">' + I.walk + 'یک قدم‌زدن کوتاه</button>' +
-      '</div></div>' +
+      '</div><a href="#instead" style="color:#C9D3CD;font-size:14px;text-decoration:underline;align-self:center;min-height:36px;display:flex;align-items:center">ایده‌های بیشتر برای جایگزین سیگار</a></div>' +
       '<button class="primary" data-act="beat" style="background:#fff;color:var(--ink)">هوس را پشت سر گذاشتم</button>' +
       '<button class="ghost" data-act="slip" style="color:#C9D3CD">لغزش داشتم — بدون سرزنش ثبتش کن</button>' +
       '</div>';
@@ -419,6 +420,92 @@
       '<div class="row"><div class="h2">نشان‌ها</div><div class="muted">' + num(got) + ' از ' + num(BAD.length) + '</div></div>' +
       '<div class="grid4">' + BAD.map(function (b) { return '<div class="badge"><div class="m' + (b[2] ? ' on' : '') + '">' + b[0] + '</div>' + b[1] + '</div>'; }).join('') + '</div>' +
       '</div>' + nav('progress');
+  };
+
+  // ---------- به‌جاش: جایگزین‌ها و ایده‌ها ----------
+  // برای هر موقعیت هوس (به همان ترتیب TRIGGERS) سه کار جایگزین
+  var ALTS = [
+    ['یک لیوان آب خنک بنوشید', 'چند دقیقه کشش و نرمش صبحگاهی', 'صبحانه را جای دیگری از خانه بخورید'],
+    ['بلافاصله مسواک بزنید', 'ده دقیقه قدم بزنید', 'یک میوه یا آدامس بدون قند'],
+    ['مدتی چای را با دمنوش عوض کنید', 'جای همیشگی چای خوردن را تغییر دهید', 'با نوشیدنی کتاب یا پادکست بگذارید، نه سیگار'],
+    ['تمرین تنفس ۴-۴-۶ را شروع کنید', 'صورتتان را با آب خنک بشویید', 'چیزی که اذیتتان می‌کند را یادداشت کنید'],
+    ['به یک دوست پیام بدهید', 'یک فصل کتاب صوتی گوش کنید', 'یک کار کوچک خانه را تمام کنید'],
+    ['از قبل بگویید ترک کرده‌اید', 'دستتان را با یک لیوان نوشیدنی مشغول کنید', 'کنار جمع غیرسیگاری بنشینید'],
+    ['آدامس یا تخمه در ماشین داشته باشید', 'یک پادکست یا کتاب صوتی پخش کنید', 'مسیر همیشگی را گاهی عوض کنید'],
+    ['یک دوش آب گرم بگیرید', 'ورزش سبک یا پیاده‌روی کوتاه', 'برای پایان روز یک نوشیدنی خوش‌طعم آماده کنید'],
+    ['هر ساعت دو دقیقه از پشت میز بلند شوید', 'یک بطری آب کنار دستتان بگذارید', 'کشش گردن و شانه در استراحت‌ها']
+  ];
+  // ایده‌ها برای وقت آزادشده: [عنوان، توضیح، دسته، دقیقه]
+  var IDEAS = [
+    ['پیاده‌روی سریع', 'یک دور کوتاه دور محله؛ ریه‌های تازه‌نفستان را حس کنید.', 'حرکت', 15],
+    ['ده بار بلند شدن و نشستن', 'حرکت سریع، هوس را از ذهن دور می‌کند.', 'حرکت', 5],
+    ['دوچرخه‌سواری یا شنا', 'نفس‌تان هر هفته بهتر می‌شود؛ امتحانش کنید.', 'حرکت', 60],
+    ['یوگا یا کشش', 'چند حرکت کششی ساده برای آرام شدن بدن.', 'حرکت', 15],
+    ['یادگرفتن چند کلمه‌ی تازه', 'هر روز چند کلمه از یک زبان جدید.', 'یادگیری', 15],
+    ['یک فصل کتاب', 'از کتابخانه‌ی اپ یک فصل بخوانید یا گوش کنید.', 'یادگیری', 15],
+    ['یک دوره‌ی آنلاین', 'مهارتی که همیشه می‌خواستید یاد بگیرید را شروع کنید.', 'یادگیری', 60],
+    ['تماس با یک دوست قدیمی', 'حالش را بپرسید؛ لازم نیست درباره‌ی سیگار حرف بزنید.', 'با دیگران', 15],
+    ['وقت گذاشتن با خانواده', 'یک بازی، یک چای، یک گپ بی‌دلیل.', 'با دیگران', 60],
+    ['پیام تشکر', 'برای کسی که کمکتان کرده یک پیام کوتاه بفرستید.', 'با دیگران', 5],
+    ['تنفس عمیق', 'سه دقیقه تمرین تنفس در صفحه‌ی هوس.', 'آرامش', 5],
+    ['نوشتن در دفترچه', 'سه چیز خوب امروز را بنویسید.', 'آرامش', 5],
+    ['مدیتیشن کوتاه', 'ده دقیقه بی‌حرکت بنشینید و فقط به نفس‌ها دقت کنید.', 'آرامش', 15],
+    ['آشپزی یک غذای تازه', 'حالا که طعم‌ها را بهتر حس می‌کنید، وقتش است.', 'خانه و خلاقیت', 60],
+    ['مرتب کردن یک کشو', 'یک کار کوچک و تمام‌شدنی؛ حس خوبی می‌دهد.', 'خانه و خلاقیت', 15],
+    ['نقاشی یا خوشنویسی', 'دست‌ها که مشغول باشند، کمتر سراغ سیگار می‌روند.', 'خانه و خلاقیت', 15],
+    ['رسیدگی به گل و گیاه', 'آب دادن و هرس کردن، آرام و دلپذیر.', 'خانه و خلاقیت', 15],
+    ['تمیز کردن جاسیگاری‌ها', 'هر نشانه‌ای از سیگار را از خانه و ماشین بیرون کنید.', 'خانه و خلاقیت', 15],
+    ['برنامه‌ی هدف پس‌انداز', 'برای پولی که جمع می‌شود یک هدف بگذارید.', 'یادگیری', 5],
+    ['خوردن یک میوه', 'یک پرتقال یا سیب؛ هم دهان مشغول می‌شود هم ویتامین می‌رسد.', 'آرامش', 5]
+  ];
+  var MIN_PER_CIG = 6; // میانگین زمانی که هر نخ سیگار می‌گیرد (برآورد)
+  function minText(m) {
+    m = Math.round(m);
+    if (m >= 1440) { var d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60); return num(d) + ' روز' + (h ? ' و ' + num(h) + ' ساعت' : ''); }
+    if (m >= 60) { var hh = Math.floor(m / 60), mm = m % 60; return num(hh) + ' ساعت' + (mm ? ' و ' + num(mm) + ' دقیقه' : ''); }
+    return num(m) + ' دقیقه';
+  }
+  var ideaFilter = 0;
+  VIEWS.instead = function () {
+    var st = stats();
+    var perDay = S.cpd * MIN_PER_CIG, total = st.notSmoked * MIN_PER_CIG;
+    // پیشنهاد امروز: هر روز یکی، ثابت در طول روز
+    var dayIdx = Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
+    var today = IDEAS[dayIdx % IDEAS.length];
+    var doneToday = S.ideaDone && S.ideaDone[dayKey(Date.now())];
+    // موقعیت‌های شخصی: ثبت‌شده‌ها اول، بعد گفته‌شده‌ها
+    var tc = TRIGGERS.map(function () { return 0; });
+    S.cravings.forEach(function (c) { var g = cTrig(c); if (g >= 0) tc[g]++; });
+    var mine = tc.map(function (n, j) { return [n, j]; }).filter(function (x) { return x[0] > 0; }).sort(function (a, b) { return b[0] - a[0]; }).map(function (x) { return x[1]; });
+    (S.triggers || []).forEach(function (g) { if (mine.indexOf(g) < 0) mine.push(g); });
+    var others = TRIGGERS.map(function (x, j) { return j; }).filter(function (j) { return mine.indexOf(j) < 0; });
+    function trigCard(g, open) {
+      return '<details class="alt-card"' + (open ? ' open' : '') + '><summary><span>' + TRIGGERS[g][0] + '</span>' + I.chev + '</summary>' +
+        '<ul>' + ALTS[g].map(function (a) { return '<li>' + a + '</li>'; }).join('') + '</ul>' +
+        '<div class="muted small" style="line-height:1.9">' + TRIGGERS[g][1] + '</div></details>';
+    }
+    var F = [['همه', 0, 999], ['۵ دقیقه', 0, 5], ['۱۵ دقیقه', 6, 15], ['بیشتر', 16, 999]];
+    var f = F[ideaFilter];
+    var ideas = IDEAS.filter(function (x) { return x[3] >= f[1] && x[3] <= f[2]; });
+    return '<div class="screen">' +
+      '<div class="h1">به‌جای سیگار</div>' +
+      '<div class="hero" style="gap:10px"><div style="font-size:14px;opacity:.9">وقتی که سیگار از شما می‌گرفت، حالا مال خودتان است</div>' +
+      '<div style="font-size:28px;font-weight:800;line-height:1.5">' + minText(total) + '</div>' +
+      '<div style="font-size:13px;opacity:.9">تا الان آزاد شده · روزی حدود ' + minText(perDay) + '</div></div>' +
+      '<div class="card" style="gap:10px"><div class="row"><div class="muted small">پیشنهاد امروز</div><div class="lib-tags"><span>' + today[2] + ' · ' + num(today[3]) + ' دقیقه</span></div></div>' +
+      '<div class="h2">' + today[0] + '</div><div class="muted" style="line-height:1.9">' + today[1] + '</div>' +
+      (doneToday ? '<div style="color:var(--green);font-weight:700;font-size:14px">انجامش دادید، آفرین!</div>' : '<button class="chip on" data-act="idea-done" style="align-self:flex-start">انجامش دادم</button>') + '</div>' +
+      '<div class="h2" style="margin-top:4px">وقتی هوس سیگار می‌آید</div>' +
+      (mine.length ? '<div class="muted small" style="margin-top:-8px">موقعیت‌های خودتان</div>' + mine.map(function (g, i) { return trigCard(g, i === 0); }).join('') : '') +
+      (mine.length ? '<div class="muted small">موقعیت‌های دیگر</div>' : '') + others.map(function (g) { return trigCard(g, false); }).join('') +
+      '<div class="h2" style="margin-top:4px">با وقت آزادشده چه کنم؟</div>' +
+      '<div class="seg">' + F.map(function (x, i) { return '<button style="flex:1" data-ifl="' + i + '" class="' + (i === ideaFilter ? 'on' : '') + '">' + x[0] + '</button>'; }).join('') + '</div>' +
+      '<div class="idea-grid">' + ideas.map(function (x) {
+        return '<div class="idea"><div class="lib-tags"><span>' + x[2] + '</span><span style="background:var(--amber-tint);color:var(--amber-ink)">' + num(x[3]) + ' دقیقه</span></div>' +
+          '<div style="font-size:15px;font-weight:700">' + x[0] + '</div><div class="muted small" style="line-height:1.8">' + x[1] + '</div></div>';
+      }).join('') + '</div>' +
+      '<div class="muted small" style="line-height:1.8">زمان آزادشده بر اساس حدود ' + num(MIN_PER_CIG) + ' دقیقه برای هر نخ برآورد شده است.</div>' +
+      '</div>' + nav('instead');
   };
 
   // ---------- داشبورد حال و هوس‌ها ----------
@@ -635,6 +722,7 @@
     }
     if (t.hasAttribute('data-buy')) { readDraftInputs(); draft.buyType = t.getAttribute('data-buy'); render(); return; }
     if (t.hasAttribute('data-method')) { readDraftInputs(); draft.method = +t.getAttribute('data-method'); render(); return; }
+    if (t.hasAttribute('data-ifl')) { ideaFilter = +t.getAttribute('data-ifl'); render(); return; }
     if (t.hasAttribute('data-trig')) {
       readDraftInputs(); var gi = +t.getAttribute('data-trig'), ga = draft.triggers.indexOf(gi);
       if (ga >= 0) draft.triggers.splice(ga, 1); else draft.triggers.push(gi);
@@ -673,6 +761,7 @@
           bg.querySelector('#do-reset').onclick = function () { S.ready = false; S.set.notifMilestones = S.set.daily = false; reschedule(false); try { localStorage.removeItem(KEY); } catch (x) {} if (LN) { var ids = [{ id: DAILY_ID }]; for (var q = 0; q < MILESTONES.length; q++) ids.push({ id: MS_ID + q }); LN.cancel({ notifications: ids }).catch(function () {}); } setTimeout(function () { location.hash = '#setup'; location.reload(); }, 300); };
         });
         return;
+      case 'idea-done': S.ideaDone = S.ideaDone || {}; S.ideaDone[dayKey(Date.now())] = 1; save(); toast('عالی! همین کارهای کوچک جای سیگار را پر می‌کنند'); render(); return;
       case 'update': checkUpdate(false); return;
       case 'perm':
         notifPermission(true).then(function (ok) {

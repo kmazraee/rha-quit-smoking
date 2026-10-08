@@ -224,3 +224,16 @@ body.has-mini .screen{padding-bottom:calc(160px + var(--safe-bottom))}
 .hrow .hbar div{height:100%;border-radius:5px;background:var(--green)}
 .hrow .hn{width:26px;font-size:13px;font-weight:700;text-align:left}
 body.has-mini .toast{bottom:calc(170px + var(--safe-bottom))}
+
+/* Instead page */
+.alt-card{background:#fff;border-radius:18px;padding:0 16px}
+.alt-card summary{list-style:none;display:flex;align-items:center;justify-content:space-between;min-height:52px;font-size:15px;font-weight:700;cursor:pointer}
+.alt-card summary::-webkit-details-marker{display:none}
+.alt-card summary svg{transition:transform .2s;color:var(--muted)}
+.alt-card[open] summary svg{transform:rotate(-90deg)}
+.alt-card ul{margin:0 0 8px;padding:0 18px 0 0;line-height:2.1;font-size:14px}
+.alt-card[open]{padding-bottom:12px}
+.idea-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.idea{background:#fff;border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:6px}
+nav.tabs{grid-template-columns:repeat(6,minmax(0,1fr))}
+nav.tabs a{font-size:10.5px;white-space:nowrap}
