@@ -65,5 +65,18 @@ if (!manifest.includes('.RahaWidget"')) {
 const gradlePath = path.join(android, 'build.gradle');
 let gradle = fs.readFileSync(gradlePath, 'utf8');
 gradle = gradle.replace(/versionCode \d+/, `versionCode ${build}`).replace(/versionName "[^"]*"/, `versionName "0.1.${build}"`);
+// ۵) نسخه‌ی release (نه debug) با همان کلید امضای ثابت، تا روی نسخه‌های قبلی نصب شود
+if (!gradle.includes('rahaRelease')) {
+  gradle = gradle.replace('    buildTypes {', `    signingConfigs {
+        rahaRelease {
+            storeFile rootProject.file('../signing/debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {`);
+  gradle = gradle.replace(/release \{\n(\s*)minifyEnabled false/, 'release {\n$1signingConfig signingConfigs.rahaRelease\n$1debuggable false\n$1minifyEnabled false');
+}
 fs.writeFileSync(gradlePath, gradle);
 console.log(`version: 0.1.${build} (${build})`);
