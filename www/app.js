@@ -371,6 +371,7 @@
     var ms = milestoneState();
     return '<div class="screen">' +
       '<div class="title-bar"><a class="icon-btn" href="#home" aria-label="بازگشت">' + I.back + '</a><div class="h1">بدن شما در حال ترمیم است</div></div>' +
+      '<a class="stats-link" href="#stats"><span class="lv-dot"></span><div class="col" style="flex:1"><div style="font-size:15px;font-weight:700">آمار زنده‌ی مرگ‌ومیر دخانیات</div><div class="small" style="opacity:.8">جهان و ایران، لحظه‌به‌لحظه</div></div>' + I.chev + '</a>' +
       '<div class="card" style="flex-direction:row;align-items:center;gap:16px"><div class="ring">' + fa(ms.done) + '/' + fa(ms.list.length) + '</div>' +
       '<div class="col"><div class="h2">' + num(ms.done) + ' مرحله از ' + num(ms.list.length) + ' کامل شد</div>' +
       '<div class="muted small" style="line-height:1.8">هر ساعت بدون سیگار، بدن یک قدم به حالت طبیعی نزدیک‌تر می‌شود.</div></div></div>' +
@@ -852,7 +853,7 @@
     if (App) App.addListener('backButton', function () {
       var open = document.querySelector('.sheet-bg');
       if (open) { open.remove(); return; }
-      if (route() === 'home' || (!S.ready && route() === 'setup')) App.exitApp(); else go(route() === 'plan' ? 'settings' : (API.backFor && API.backFor(route())) || 'home');
+      if (route() === 'home' || (!S.ready && route() === 'setup')) App.exitApp(); else go(route() === 'plan' ? 'settings' : route() === 'stats' ? 'health' : (API.backFor && API.backFor(route())) || 'home');
     });
   } catch (e) {}
 
@@ -863,6 +864,7 @@
     onLeave: function (f) { leaveHooks.push(f); }
   };
   if (window.RAHA_LIB) { try { window.RAHA_LIB(API); } catch (e) { console.error(e); } }
+  if (window.RAHA_STATS) { try { window.RAHA_STATS(API); } catch (e) { console.error(e); } }
 
   render();
 
