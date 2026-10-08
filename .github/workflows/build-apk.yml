@@ -39,9 +39,6 @@ jobs:
           # ویجت، آیکن اعلان و شماره‌ی نسخه
           node scripts/patch-android.mjs $N
           npx cap sync android
-          # کلید امضای ثابت، تا نسخه‌های بعدی روی نسخه‌ی قبلی نصب شوند
-          mkdir -p ~/.android
-          cp signing/debug.keystore ~/.android/debug.keystore
 
       - name: ساخت فایل APK
         working-directory: android
@@ -49,6 +46,10 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk ../raha-v0.1.${{ github.run_number }}.apk
+          # اطمینان از اینکه فایل با کلید ثابت امضا شده (وگرنه روی نسخه‌ی قبلی نصب نمی‌شود)
+          SIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
+          $SIGNER verify --print-certs ../raha-v0.1.${{ github.run_number }}.apk | tee /tmp/certs.txt
+          grep -qi "SHA-256 digest: cf51722a20f5a94c40c3d3617f998f7c108c7cb1025a59c1e259411a26b377fd" /tmp/certs.txt || { echo "کلید امضا اشتباه است"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
