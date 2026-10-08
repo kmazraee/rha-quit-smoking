@@ -1,0 +1,8 @@
+{
+  "appId": "com.rha.quitsmoking",
+  "appName": "رها",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#F3F5F1"
+  }
+}

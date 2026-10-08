@@ -1,0 +1,17 @@
+{
+  "name": "rha-quit-smoking",
+  "version": "0.1.0",
+  "private": true,
+  "description": "رها — اپ فارسی ترک سیگار",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/core": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
+}

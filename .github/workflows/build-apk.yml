@@ -1,0 +1,53 @@
+name: ساخت APK اندروید
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: نصب وابستگی‌ها
+        run: npm ci
+
+      - name: ساخت پروژه‌ی اندروید
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: ساخت فایل APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../raha-v0.1.${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raha-apk
+          path: raha-v0.1.*.apk
+
+      - name: انتشار در بخش Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.${{ github.run_number }}
+          name: رها — نسخه‌ی آزمایشی ${{ github.run_number }}
+          body: فایل APK را روی گوشی اندروید دانلود و نصب کنید.
+          files: raha-v0.1.*.apk
