@@ -249,3 +249,30 @@ nav.tabs a{font-size:10.5px;white-space:nowrap}
 .lv-c{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
 .stats-link{background:#1B1414;color:#fff;border-radius:18px;padding:14px 16px;display:flex;align-items:center;gap:12px}
 .lv-hero > div:nth-child(2){padding-left:22px}
+
+/* Extras: toolbox, journey, cards, game, prep, NRT, pledge */
+.tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.tool{background:#fff;border-radius:18px;padding:14px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;font-size:12.5px;font-weight:700;color:var(--ink);min-height:92px;justify-content:center}
+.tool svg{color:var(--green)}
+.jr{display:flex;align-items:center;gap:10px;background:#fff;border-radius:18px;padding:0 16px;min-height:52px;font-size:15px;font-weight:700}
+.jr.locked{opacity:.5}
+.jn{width:28px;height:28px;border-radius:14px;background:var(--ground);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+.jn.on{background:var(--green);color:#fff}
+.mcard{background:var(--green);color:#fff;border-radius:28px;padding:32px 24px;min-height:260px;display:flex;flex-direction:column;justify-content:center;gap:8px;font-size:20px;font-weight:700;line-height:2}
+.mcard .mq{font-size:64px;line-height:.6;opacity:.35}
+.mcard.flip{animation:cardflip .45s ease}
+@keyframes cardflip{0%{transform:rotateY(80deg);opacity:.2}100%{transform:none;opacity:1}}
+.game{position:relative;flex:1;min-height:420px;background:#fff;border-radius:24px;overflow:hidden;touch-action:manipulation}
+.bubble{position:absolute;border:none;border-radius:50%;opacity:.9;transition:transform .2s,opacity .2s;animation:bubblein .25s ease}
+.bubble.popped{transform:scale(1.6);opacity:0}
+@keyframes bubblein{from{transform:scale(.2)}to{transform:scale(1)}}
+.prep-row{width:100%;min-height:54px;display:flex;align-items:center;gap:12px;border:none;background:none;border-bottom:1px solid var(--line);font-size:14px;color:var(--ink);padding:8px 0}
+.prep-row:last-child{border-bottom:none}
+.prep-row .pc{width:26px;height:26px;border-radius:8px;border:2px solid #CBD3CE;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;flex-shrink:0}
+.prep-row.on .pc{background:var(--green);border-color:var(--green)}
+.prep-row.on span:last-child{color:var(--muted);text-decoration:line-through}
+.nrt-btn{background:#fff;border:none;border-radius:18px;padding:14px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-size:13px;color:var(--ink);text-align:right}
+.nrt-btn b{font-size:26px;color:var(--green)}
+.pledge.on{background:var(--green-tint)}
+.pledge-ok{width:40px;height:40px;border-radius:20px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+select.input{appearance:auto}

@@ -242,6 +242,7 @@
     fwd: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/><text x="12" y="15.5" font-size="7.5" text-anchor="middle" fill="currentColor" stroke="none" font-family="sans-serif" font-weight="700">15</text></svg>',
     rew: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v4h4"/><text x="12" y="15.5" font-size="7.5" text-anchor="middle" fill="currentColor" stroke="none" font-family="sans-serif" font-weight="700">15</text></svg>',
     spark: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/></svg>',
+    lock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
     walk: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 3v3M7 12l3-4 4 2 3 3"/></svg>'
   };
 
@@ -297,14 +298,54 @@
   function cTime(c) { return typeof c === 'number' ? c : c.t; }
   function cTrig(c) { return typeof c === 'number' ? -1 : (typeof c.g === 'number' ? c.g : -1); }
 
+  // ---------- کاهش تدریجی ----------
+  function taperAllowance() {
+    if (S.method !== 1 || !S.taperStart || S.quitAt <= Date.now()) return null;
+    var total = S.taperDays || Math.max(1, Math.round((S.quitAt - S.taperStart) / 86400000));
+    var d = Math.floor((Date.now() - S.taperStart) / 86400000);
+    return Math.max(0, Math.round(S.cpd * (1 - (d + 1) / total)));
+  }
+  function taperCard() {
+    var al = taperAllowance(); if (al === null) return '';
+    var used = (S.smoked || {})[dayKey(Date.now())] || 0, over = used > al;
+    return '<div class="card" style="gap:10px"><div class="row"><div class="h2">سهم امروز</div><div class="muted small">به‌جای ' + num(S.cpd) + ' نخ</div></div>' +
+      '<div class="row" style="justify-content:flex-start;align-items:baseline;gap:8px"><div style="font-size:34px;font-weight:800;color:' + (over ? '#C0533A' : 'var(--green)') + '">' + num(used) + '</div><div class="muted">از ' + num(al) + ' نخ</div></div>' +
+      '<div class="bar"><div style="width:' + Math.min(100, al ? used / al * 100 : (used ? 100 : 0)) + '%;' + (over ? 'background:#C0533A' : '') + '"></div></div>' +
+      '<div class="grid2"><button class="chip on" data-act="smoked1">یک نخ کشیدم</button><button class="chip" data-act="smoked-undo">اشتباه زدم</button></div></div>';
+  }
+  // پیام‌های پیگیری بعد از لغزش (۲۴ و ۷۲ ساعت بعد)
+  function slipCheckins() {
+    if (!LN) return;
+    notifPermission(false).then(function (ok) {
+      if (!ok) return;
+      ensureChannel().then(function () {
+        LN.schedule({ notifications: [
+          { id: 400, channelId: 'raha', title: 'رها', body: 'یک روز از لغزش گذشت. حالتان چطور است؟ هر ساعت بدون سیگار دوباره به حساب می‌آید.', schedule: { at: new Date(Date.now() + 86400000), allowWhileIdle: true }, extra: { go: 'home' } },
+          { id: 401, channelId: 'raha', title: 'رها', body: 'سه روز گذشت. یک برنامه‌ی اگر-آنگاه برای موقعیتی که باعث لغزش شد بنویسید.', schedule: { at: new Date(Date.now() + 3 * 86400000), allowWhileIdle: true }, extra: { go: 'ifthen' } }
+        ] }).catch(function () {});
+      });
+    });
+  }
+
   VIEWS.home = function () {
     var st = stats(), ms = milestoneState(), mood = S.moods[dayKey(Date.now())];
-    var nx = ms.next;
+    var nx = ms.next, future = S.quitAt > Date.now(), today = dayKey(Date.now());
+    var pledged = S.pledges && S.pledges[today], streak = API.pledgeStreak ? API.pledgeStreak() : 0;
+    var hero = future
+      ? '<div class="hero"><div style="font-size:14px;font-weight:500;opacity:.9">تا روز ترک</div>' +
+        '<div class="units"><div class="unit"><div class="big" id="c-d">۰</div><div class="lbl">روز</div></div>' +
+        '<div class="unit"><div class="mid" id="c-h">۰۰</div><div class="lbl">ساعت</div></div>' +
+        '<div class="unit"><div class="mid" id="c-m">۰۰</div><div class="lbl">دقیقه</div></div>' +
+        '<div class="unit"><div class="mid" id="c-s">۰۰</div><div class="lbl">ثانیه</div></div></div>' +
+        '<div class="sep"></div><div style="font-size:14px;line-height:1.9">' + (S.method === 1 ? 'در دوره‌ی کاهش تدریجی هستید. هر روز کمی کمتر، تا روز ترک.' : 'از این فرصت برای آماده شدن استفاده کنید.') + '</div></div>' +
+        (S.method === 1 ? taperCard() : '') +
+        '<a class="card" href="#prep" style="flex-direction:row;align-items:center;gap:12px"><div class="col" style="flex:1"><div class="h2">آماده‌شدن برای روز ترک</div><div class="muted small">فهرست کارهای پیش از ترک</div></div>' + I.chev + '</a>'
+      : null;
     return '<div class="screen">' +
       '<div class="row"><div class="col"><div class="muted">' + esc(todayFa.format(new Date())) + '</div>' +
       '<div class="h1">سلام' + (S.name ? '، ' + esc(S.name) : '') + '</div></div>' +
       '<a class="icon-btn" href="#settings" aria-label="تنظیمات اعلان‌ها">' + I.bell + '</a></div>' +
-      '<div class="hero"><div style="font-size:14px;font-weight:500;opacity:.9">مدت زمانی که سیگار نکشیده‌اید</div>' +
+      (hero ? hero : '<div class="hero"><div style="font-size:14px;font-weight:500;opacity:.9">مدت زمانی که سیگار نکشیده‌اید</div>' +
       '<div class="units"><div class="unit"><div class="big" id="c-d">۰</div><div class="lbl">روز</div></div>' +
       '<div class="unit"><div class="mid" id="c-h">۰۰</div><div class="lbl">ساعت</div></div>' +
       '<div class="unit"><div class="mid" id="c-m">۰۰</div><div class="lbl">دقیقه</div></div>' +
@@ -313,24 +354,30 @@
       '<div class="col"><div class="stat-v" id="s-n">' + num(st.notSmoked) + '</div><div class="stat-l">نخ نکشیده</div></div>' +
       '<div class="col"><div class="stat-v" id="s-m">' + shortMoney(st.money) + '</div><div class="stat-l">' + cur() + ' پس‌انداز</div></div>' +
       '<div class="col"><div class="stat-v" id="s-l">' + lifeText(st.lifeMin) + '</div><div class="stat-l">عمر برگشته</div></div>' +
-      '</div></div>' +
+      '</div></div>') +
+      (!future ? '<div class="card pledge' + (pledged ? ' on' : '') + '" style="flex-direction:row;align-items:center;gap:12px">' +
+        '<div class="col" style="flex:1"><div class="h2">' + (pledged ? 'تعهد امروز را دادید' : 'تعهد امروز') + '</div><div class="muted small">' + (pledged ? 'روزهای پیاپی: ' + num(streak) : 'فقط برای همین امروز: «امروز سیگار نمی‌کشم»') + '</div></div>' +
+        (pledged ? '<div class="pledge-ok">✓</div>' : '<button class="chip on" data-act="pledge">متعهدم</button>') + '</div>' : '') +
       '<a class="sos" href="#sos"><div class="ic">' + I.flame + '</div><div class="col" style="flex:1"><div style="font-size:17px;font-weight:700">هوس سیگار دارم</div>' +
       '<div style="font-size:13px;color:#C9D3CD">چند دقیقه با من بمان، می‌گذرد</div></div>' + I.chev + '</a>' +
       (nx ? '<a class="card" href="#health"><div class="row"><div class="muted">قدم بعدی بدن شما</div><div style="font-size:13px;font-weight:700;color:var(--green)">' + num(Math.floor(nx.p)) + '٪</div></div>' +
         '<div class="h2">' + nx.title + '</div><div class="bar"><div style="width:' + nx.p + '%"></div></div><div class="muted small">' + leftText(nx.left) + '</div></a>' : '') +
       (S.ready && st.days >= 3 && (!S.lastBackup || Date.now() - S.lastBackup > 14 * 86400000)
         ? '<a class="card" href="#settings" style="flex-direction:row;align-items:center;gap:12px;background:var(--amber-tint);color:var(--amber-ink)"><div class="col" style="flex:1"><div style="font-weight:700">از اطلاعاتتان پشتیبان بگیرید</div><div class="small">در گوگل درایو، دراپ‌باکس یا وان‌درایو، تا با عوض کردن گوشی چیزی از دست نرود</div></div>' + I.chev + '</a>' : '') +
-      '<div class="card"><div class="row"><div class="h2">حال امروزت چطوره؟</div><div class="muted small">ثبت روزانه</div></div>' +
+      (API.journeyCard ? API.journeyCard() : '') +
+      '<div class="card"><div class="row"><div class="h2">حال امروزت چطوره؟</div><a class="muted small" href="#journal" style="text-decoration:underline">نوشتن در دفترچه</a></div>' +
       '<div class="grid4">' + MOODS.map(function (m, i) { return '<button class="mood' + (mood === i ? ' on' : '') + '" data-mood="' + i + '">' + m + '</button>'; }).join('') + '</div></div>' +
+      (API.toolbox ? API.toolbox() : '') +
       '</div>' + nav('home');
   };
   AFTER.home = function () {
     function upd() {
-      var ms = elapsedMs(), s = Math.floor(ms / 1000);
+      var ms = S.quitAt > Date.now() ? S.quitAt - Date.now() : elapsedMs(), s = Math.floor(ms / 1000);
+      if (S.quitAt <= Date.now() && $('#c-d') && document.querySelector('.hero') && document.querySelector('.hero').textContent.indexOf('تا روز ترک') >= 0) { render(); return; }
       var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
       var e = $('#c-d'); if (!e) return;
       e.textContent = num(d); $('#c-h').textContent = pad(h); $('#c-m').textContent = pad(m); $('#c-s').textContent = pad(sec);
-      var st = stats();
+      var st = stats(); if (!$('#s-n')) return;
       $('#s-n').textContent = num(st.notSmoked); $('#s-m').textContent = shortMoney(st.money); $('#s-l').textContent = lifeText(st.lifeMin);
     }
     upd(); tick = setInterval(upd, 1000);
@@ -348,7 +395,11 @@
       '<button class="alt" data-act="reasons">' + I.heart + 'دلیل‌هایم برای ترک</button>' +
       '<button class="alt" data-act="wait">' + I.timer + 'فقط ۵ دقیقه صبر</button>' +
       '<button class="alt" data-act="walk">' + I.walk + 'یک قدم‌زدن کوتاه</button>' +
-      '</div><a href="#instead" style="color:#C9D3CD;font-size:14px;text-decoration:underline;align-self:center;min-height:36px;display:flex;align-items:center">ایده‌های بیشتر برای جایگزین سیگار</a></div>' +
+      '<a class="alt" href="#game">' + I.breath + 'بازی یک‌دقیقه‌ای</a>' +
+      '<button class="alt" data-act="card">' + I.spark + 'کارت انگیزشی</button>' +
+      '<a class="alt" href="#thoughts">' + I.heart + 'این فکر را بررسی کن</a>' +
+      '<a class="alt" href="#help">' + I.headphones + 'کمک تخصصی</a>' +
+      '</div>' + (API.ifthenHtml ? API.ifthenHtml() : '') + '<a href="#instead" style="color:#C9D3CD;font-size:14px;text-decoration:underline;align-self:center;min-height:36px;display:flex;align-items:center">ایده‌های بیشتر برای جایگزین سیگار</a></div>' +
       '<button class="primary" data-act="beat" style="background:#fff;color:var(--ink)">هوس را پشت سر گذاشتم</button>' +
       '<button class="ghost" data-act="slip" style="color:#C9D3CD">لغزش داشتم — بدون سرزنش ثبتش کن</button>' +
       '</div>';
@@ -424,7 +475,7 @@
       '<div class="chart">' + counts.map(function (c, j) { return '<div class="c">' + num(c) + '<div class="b' + (j === 6 ? ' today' : '') + '" style="height:' + Math.round(c / max * 86) + 'px"></div></div>'; }).join('') + '</div>' +
       '<div class="days">' + labels.map(function (l) { return '<div>' + l + '</div>'; }).join('') + '</div></div>' +
       dashboardCards() +
-      '<div class="row"><div class="h2">نشان‌ها</div><div class="muted">' + num(got) + ' از ' + num(BAD.length) + '</div></div>' +
+      '<div class="row"><div class="h2">نشان‌ها</div><a class="muted" href="#badges" style="text-decoration:underline">همه‌ی نشان‌ها' + (API.badgeCount ? ' (' + num(API.badgeCount()[0]) + ' از ' + num(API.badgeCount()[1]) + ')' : '') + '</a></div>' +
       '<div class="grid4">' + BAD.map(function (b) { return '<div class="badge"><div class="m' + (b[2] ? ' on' : '') + '">' + b[0] + '</div>' + b[1] + '</div>'; }).join('') + '</div>' +
       '</div>' + nav('progress');
   };
@@ -568,7 +619,16 @@
     var sum = '<div class="grid3"><div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v" style="color:var(--green)">' + num(S.cravings.length) + '</div><div class="muted small">هوس شکست‌خورده</div></div>' +
       '<div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v">' + num(slipsN) + '</div><div class="muted small">لغزش</div></div>' +
       '<div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v">' + num(logged) + '</div><div class="muted small">ثبت حال</div></div></div>';
-    return sum + moodCard + trigCard + timeCard + tip;
+    // چه چیزی بیشتر کمک کرده است
+    var HL = API.HELPS || [], hc = HL.map(function () { return 0; }), hAny = 0;
+    S.cravings.forEach(function (c) { if (c && c.h) c.h.forEach(function (h) { if (h < hc.length) { hc[h]++; hAny++; } }); });
+    var helpCard = '';
+    if (hAny) {
+      var ho = hc.map(function (n, j) { return [n, j]; }).filter(function (x) { return x[0]; }).sort(function (a, b) { return b[0] - a[0]; }).slice(0, 5), hm = ho[0][0];
+      helpCard = '<div class="card"><div class="h2">چه چیزی بیشتر کمک کرده؟</div>' + ho.map(function (x) { return '<div class="hrow"><div class="hl">' + HL[x[1]] + '</div><div class="hbar"><div style="width:' + Math.max(6, x[0] / hm * 100) + '%;background:var(--mint)"></div></div><div class="hn">' + num(x[0]) + '</div></div>'; }).join('') + '</div>';
+    }
+    var histLink = S.cravings.length ? '<a class="chip" href="#cravings" style="display:flex;align-items:center;justify-content:center">تاریخچه‌ی کامل هوس‌ها</a>' : '';
+    return sum + moodCard + trigCard + timeCard + helpCard + tip + histLink;
   }
 
   // ---------- ویجت صفحه‌ی اصلی گوشی ----------
@@ -725,7 +785,7 @@
   // صفحه‌ی برنامه (هم شروع، هم ویرایش)
   var draft = null;
   function freshDraft() {
-    return { name: S.name, cpd: S.cpd, perPack: S.perPack, packPrice: S.packPrice, buyType: S.buyType || 'pack', singlePrice: S.singlePrice || 0, pouchPrice: S.pouchPrice || 0, perPouch: S.perPouch || 40, rollExtra: S.rollExtra || 0, method: S.method, reasons: S.reasons.slice(), triggers: (S.triggers || []).slice(), when: S.ready ? 'keep' : 'now' };
+    return { name: S.name, cpd: S.cpd, perPack: S.perPack, packPrice: S.packPrice, buyType: S.buyType || 'pack', singlePrice: S.singlePrice || 0, pouchPrice: S.pouchPrice || 0, perPouch: S.perPouch || 40, rollExtra: S.rollExtra || 0, method: S.method, reasons: S.reasons.slice(), triggers: (S.triggers || []).slice(), myReasons: (S.myReasons || []).slice(), taperDays: S.ready && S.method === 1 ? 0 : 14, when: S.ready ? 'keep' : 'now' };
   }
   function moneyField(id, label, val, ph) {
     return '<div class="field"><label for="' + id + '">' + label + '</label><input class="input" id="' + id + '" inputmode="numeric" data-money placeholder="' + ph + '" value="' + (val ? num(val) : '') + '"></div>';
@@ -763,11 +823,19 @@
       REASONS.map(function (r, i) { return '<button class="chip' + (draft.reasons.indexOf(i) >= 0 ? ' on' : '') + '" data-reason="' + i + '">' + r + '</button>'; }).join('') + '</div></div>' +
       '<div class="col" style="gap:8px"><div style="font-size:15px;font-weight:700">بیشتر چه موقع‌هایی سیگار دلتان می‌خواهد؟</div><div class="chips">' +
       TRIGGERS.map(function (x, i) { return '<button class="chip' + (draft.triggers.indexOf(i) >= 0 ? ' on' : '') + '" data-trig="' + i + '">' + x[0] + '</button>'; }).join('') + '</div></div>' +
-      '<div class="col" style="gap:8px"><div style="font-size:15px;font-weight:700">زمان ترک</div><div class="chips">' +
+      '<div class="col" style="gap:8px"><label for="f-myr" style="font-size:15px;font-weight:700">دلیل‌های خودتان (هر خط یک دلیل، اختیاری)</label>' +
+      '<textarea class="input" id="f-myr" rows="3" style="padding:10px 14px;min-height:84px;resize:vertical" placeholder="مثلاً: می‌خواهم دخترم بوی سیگار را حس نکند">' + esc((draft.myReasons || []).join('\n')) + '</textarea></div>' +
+      (draft.method === 1
+        ? '<div class="col" style="gap:8px"><div style="font-size:15px;font-weight:700">طول دوره‌ی کاهش تدریجی</div><div class="chips">' +
+          (S.ready && S.method === 1 ? '<button class="chip' + (!draft.taperDays ? ' on' : '') + '" data-taper="0">بدون تغییر</button>' : '') +
+          [7, 14, 21, 28].map(function (d) { return '<button class="chip' + (draft.taperDays === d ? ' on' : '') + '" data-taper="' + d + '">' + fa(d) + ' روز</button>'; }).join('') + '</div>' +
+          '<div class="muted small" style="line-height:1.9">هر روز سهم مجازتان کمی کمتر می‌شود و در پایان دوره، روز ترک کامل است.</div></div>'
+        : '') +
+      (draft.method === 1 ? '' : '<div class="col" style="gap:8px"><div style="font-size:15px;font-weight:700">زمان ترک</div><div class="chips">' +
       (S.ready ? '<button class="chip' + (draft.when === 'keep' ? ' on' : '') + '" data-when="keep">بدون تغییر</button>' : '') +
       '<button class="chip' + (draft.when === 'now' ? ' on' : '') + '" data-when="now">' + (S.ready ? 'از همین الان دوباره' : 'از همین الان') + '</button>' +
       '<button class="chip' + (draft.when === 'pick' ? ' on' : '') + '" data-when="pick">انتخاب تاریخ و ساعت</button></div>' +
-      (draft.when === 'pick' ? '<input class="input" type="datetime-local" id="f-date" style="direction:ltr" aria-label="تاریخ ترک">' : '') + '</div>' +
+      (draft.when === 'pick' ? '<input class="input" type="datetime-local" id="f-date" style="direction:ltr" aria-label="تاریخ ترک">' : '') + '</div>') +
       '<button class="primary" data-act="save">' + (isSetup ? 'شروع کنیم' : 'ذخیره') + '</button>' +
       '</div>' + (isSetup ? '' : nav('settings'));
   }
@@ -775,6 +843,7 @@
   VIEWS.plan = function () { return planView(false); };
   function readDraftInputs() {
     var n = $('#f-name'); if (n) draft.name = n.value.trim();
+    var mr = $('#f-myr'); if (mr) draft.myReasons = mr.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 12);
     function intOf(id, def) { var e = $('#' + id); return e ? parseInt(toEn(e.value) || String(def), 10) : null; }
     var v;
     if ((v = intOf('f-price', 0)) !== null) draft.packPrice = v;
@@ -823,6 +892,7 @@
       draft.cpd = Math.min(80, Math.max(1, draft.cpd + +t.getAttribute('data-step')));
       $('#f-cpd').textContent = num(draft.cpd); var cl0 = $('#f-costline'); if (cl0) cl0.textContent = costLine(); return;
     }
+    if (t.hasAttribute('data-taper')) { readDraftInputs(); draft.taperDays = +t.getAttribute('data-taper'); render(); return; }
     if (t.hasAttribute('data-buy')) { readDraftInputs(); draft.buyType = t.getAttribute('data-buy'); render(); return; }
     if (t.hasAttribute('data-method')) { readDraftInputs(); draft.method = +t.getAttribute('data-method'); render(); return; }
     if (t.hasAttribute('data-ifl')) { ideaFilter = +t.getAttribute('data-ifl'); render(); return; }
@@ -845,6 +915,11 @@
         if (draft.buyType === 'single' && !draft.singlePrice) { toast('لطفاً قیمت هر نخ را وارد کنید'); $('#f-single').focus(); return; }
         if (draft.buyType === 'roll' && !draft.pouchPrice) { toast('لطفاً قیمت بسته‌ی توتون را وارد کنید'); $('#f-pouch').focus(); return; }
         var when = S.quitAt;
+        if (draft.method === 1) {
+          if (draft.taperDays) { S.taperStart = Date.now(); S.taperDays = draft.taperDays; when = Date.now() + draft.taperDays * 86400000; }
+          else if (S.method !== 1) { S.taperStart = Date.now(); S.taperDays = 14; when = Date.now() + 14 * 86400000; }
+          draft.when = 'taper';
+        }
         if (draft.when === 'now') when = Date.now();
         if (draft.when === 'pick') {
           var dv = $('#f-date') && $('#f-date').value;
@@ -852,7 +927,7 @@
           when = new Date(dv).getTime();
         }
         S.name = draft.name; S.cpd = draft.cpd; S.perPack = draft.perPack; S.packPrice = draft.packPrice; S.buyType = draft.buyType; S.singlePrice = draft.singlePrice; S.pouchPrice = draft.pouchPrice; S.perPouch = draft.perPouch; S.rollExtra = draft.rollExtra;
-        S.method = draft.method; S.reasons = draft.reasons.slice(); S.triggers = draft.triggers.slice(); S.quitAt = when;
+        S.method = draft.method; S.myReasons = (draft.myReasons || []).slice(); S.reasons = draft.reasons.slice(); S.triggers = draft.triggers.slice(); S.quitAt = when;
         var first = !S.ready; S.ready = true; S.seenMs = -1; save(); draft = null;
         reschedule(first); syncWidget();
         if (first) go('home'); else { toast('ذخیره شد'); go('settings'); }
@@ -888,12 +963,16 @@
         sheet('<div class="h2">آفرین! این هوس را پشت سر گذاشتید</div><div class="muted">چه چیزی باعثش شد؟ (برای داشبورد شما)</div>' +
           '<div class="chips" id="bt-g">' + TRIGGERS.map(function (x, j) { return '<button class="chip" data-g="' + j + '">' + x[0] + '</button>'; }).join('') + '</div>' +
           '<div class="muted">شدتش چقدر بود؟</div><div class="seg" id="bt-i"><button style="flex:1" data-i="1">کم</button><button style="flex:1" data-i="2" class="on">متوسط</button><button style="flex:1" data-i="3">شدید</button></div>' +
+          '<div class="muted">چه چیزی کمک کرد؟</div><div class="chips">' + (API.HELPS || []).map(function (x, j) { return '<button class="chip" data-h="' + j + '">' + x + '</button>'; }).join('') + '</div>' +
+          '<textarea class="input" id="bt-n" rows="2" placeholder="یادداشت (اختیاری)" style="padding:10px 14px;min-height:64px;resize:none"></textarea>' +
           '<button class="primary" id="bt-save">ثبت</button>', function (bg) {
-          var g = -1, inten = 2;
+          var g = -1, inten = 2, helped = [];
+          bg.querySelectorAll('[data-h]').forEach(function (el) { el.onclick = function () { var h = +el.getAttribute('data-h'), at = helped.indexOf(h); if (at >= 0) helped.splice(at, 1); else helped.push(h); el.classList.toggle('on'); }; });
           bg.querySelectorAll('[data-g]').forEach(function (el) { el.onclick = function () { g = +el.getAttribute('data-g'); bg.querySelectorAll('[data-g]').forEach(function (x) { x.classList.toggle('on', x === el); }); }; });
           bg.querySelectorAll('[data-i]').forEach(function (el) { el.onclick = function () { inten = +el.getAttribute('data-i'); bg.querySelectorAll('[data-i]').forEach(function (x) { x.classList.toggle('on', x === el); }); }; });
           bg.querySelector('#bt-save').onclick = function () {
-            S.cravings.push({ t: Date.now(), g: g, i: inten }); save(); bg.remove();
+            var note = bg.querySelector('#bt-n').value.trim().slice(0, 500);
+            S.cravings.push({ t: Date.now(), g: g, i: inten, h: helped, n: note }); save(); bg.remove();
             toast(num(S.cravings.length) + ' هوس را شکست داده‌اید'); setTimeout(function () { go('home'); }, 700);
           };
         });
@@ -901,15 +980,19 @@
       case 'slip':
         sheet('<div class="h2">اشکالی ندارد، ادامه بده</div><div class="muted" style="line-height:1.9">یک لغزش به معنای شکست نیست. می‌خواهید شمارنده از همین الان دوباره شروع شود، یا فقط ثبت شود و شمارنده ادامه پیدا کند؟</div>' +
           '<button class="primary" id="slip-log">فقط ثبت کن</button><button class="primary" id="slip-reset" style="background:var(--ink)">شمارنده از نو</button><button class="ghost" data-close>انصراف</button>', function (bg) {
-          bg.querySelector('#slip-log').onclick = function () { S.slips.push(Date.now()); save(); bg.remove(); go('home'); };
-          bg.querySelector('#slip-reset').onclick = function () { S.slips.push(Date.now()); S.quitAt = Date.now(); S.seenMs = -1; save(); reschedule(false); syncWidget(); bg.remove(); go('home'); };
+          bg.querySelector('#slip-log').onclick = function () { S.slips.push(Date.now()); save(); slipCheckins(); bg.remove(); go('home'); };
+          bg.querySelector('#slip-reset').onclick = function () { S.slips.push(Date.now()); S.quitAt = Date.now(); S.seenMs = -1; save(); reschedule(false); syncWidget(); slipCheckins(); bg.remove(); go('home'); };
         });
         return;
       case 'reasons':
         sheet('<div class="h2">دلیل‌های شما برای ترک</div><div class="chips">' +
           (S.reasons.length ? S.reasons.map(function (r) { return '<span class="chip on" style="display:inline-flex;align-items:center">' + REASONS[r] + '</span>'; }).join('') : '<div class="muted">هنوز دلیلی انتخاب نکرده‌اید. از «برنامه من» اضافه کنید.</div>') +
-          '</div><div class="muted" style="line-height:1.9">تا الان ' + num(stats().notSmoked) + ' نخ نکشیده‌اید. این را خراب نکنید.</div><button class="primary" data-close>باشه</button>');
+          '</div>' + ((S.myReasons || []).length ? '<div class="col" style="gap:6px">' + S.myReasons.map(function (r) { return '<div class="mark-quote" style="background:var(--green-tint)">' + esc(r) + '</div>'; }).join('') + '</div>' : '') + '<div class="muted" style="line-height:1.9">تا الان ' + num(stats().notSmoked) + ' نخ نکشیده‌اید. این را خراب نکنید.</div><button class="primary" data-close>باشه</button>');
         return;
+      case 'card': sheet('<div class="h2">کارت انگیزشی</div><div class="mcard" style="min-height:160px">' + esc(API.randomCard ? API.randomCard() : '') + '</div><a class="chip" href="#cards" style="display:flex;align-items:center;justify-content:center">کارت‌های بیشتر</a><button class="primary" data-close>باشه</button>'); return;
+      case 'pledge': S.pledges = S.pledges || {}; S.pledges[dayKey(Date.now())] = 1; save(); toast('آفرین! فقط برای امروز. همین کافی است.'); render(); return;
+      case 'smoked1': { S.smoked = S.smoked || {}; var k1 = dayKey(Date.now()); S.smoked[k1] = (S.smoked[k1] || 0) + 1; save(); var al = taperAllowance(); if (al !== null && S.smoked[k1] > al) toast('از سهم امروز گذشتید؛ اشکالی ندارد، فردا دوباره تلاش کنید'); render(); return; }
+      case 'smoked-undo': { var k2 = dayKey(Date.now()); if (S.smoked && S.smoked[k2]) { S.smoked[k2]--; save(); render(); } return; }
       case 'water': toast('آرام و جرعه‌جرعه بنوشید؛ هوس معمولاً تا چند دقیقه کم می‌شود'); return;
       case 'walk': toast('بلند شوید و چند دقیقه راه بروید؛ تغییر مکان کمک می‌کند'); return;
       case 'wait': {
@@ -958,7 +1041,7 @@
     if (App) App.addListener('backButton', function () {
       var open = document.querySelector('.sheet-bg');
       if (open) { open.remove(); return; }
-      if (route() === 'home' || (!S.ready && route() === 'setup')) App.exitApp(); else go(route() === 'plan' ? 'settings' : route() === 'stats' ? 'health' : (API.backFor && API.backFor(route())) || 'home');
+      if (route() === 'home' || (!S.ready && route() === 'setup')) App.exitApp(); else go(({ plan: 'settings', stats: 'health', game: 'sos', thoughts: 'sos', cravings: 'progress', badges: 'progress' })[route()] || (API.backFor && API.backFor(route())) || 'home');
     });
   } catch (e) {}
 
@@ -966,8 +1049,11 @@
   var API = {
     S: S, save: save, esc: esc, num: num, fa: fa, pad: pad, toEn: toEn, $: $, toast: toast, sheet: sheet,
     go: go, route: route, render: render, nav: nav, I: I, VIEWS: VIEWS, AFTER: AFTER,
-    onLeave: function (f) { leaveHooks.push(f); }
+    onLeave: function (f) { leaveHooks.push(f); },
+    TRIGGERS: TRIGGERS, MILESTONES: MILESTONES, dayKey: dayKey, stats: stats, plugin: plugin, IS_NATIVE: IS_NATIVE,
+    shortMoney: shortMoney, cur: cur, copy: function (t) { try { navigator.clipboard.writeText(t).then(function () { toast('کپی شد'); }); } catch (e) {} }
   };
+  if (window.RAHA_EXTRAS) { try { window.RAHA_EXTRAS(API); } catch (e) { console.error(e); } }
   if (window.RAHA_LIB) { try { window.RAHA_LIB(API); } catch (e) { console.error(e); } }
   if (window.RAHA_STATS) { try { window.RAHA_STATS(API); } catch (e) { console.error(e); } }
 
