@@ -14,6 +14,19 @@
     method: 0, reasons: [0, 2], goal: { name: '', amount: 0 },
     moods: {}, cravings: [], slips: [], name: ''
   };
+  var DEFAULT_SET = { notifMilestones: true, daily: true, dailyTime: '21:00', vibrate: true, currency: 'toman', autoUpdate: true };
+  S.set = Object.assign({}, DEFAULT_SET, S.set || {});
+  if (typeof S.seenMs !== 'number') S.seenMs = -1; // تعداد مراحلی که جشنشان نمایش داده شده (-۱ یعنی هنوز مقداردهی نشده)
+
+  // ---------- افزونه‌های بومی (فقط داخل اپ اندروید وجود دارند) ----------
+  function plugin(name) { try { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[name]; } catch (e) { return null; } }
+  var IS_NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  var UPDATE_REPO = 'kmazraee/rha-quit-smoking';
+  var APP_VERSION = { code: 0, name: 'نسخه‌ی توسعه' };
+  try {
+    fetch('version.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (v) { if (v && v.code) APP_VERSION = v; }).catch(function () {});
+  } catch (e) {}
 
   // ---------- ابزارها ----------
   var FA = '۰۱۲۳۴۵۶۷۸۹';
@@ -28,7 +41,10 @@
     var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
     document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2600);
   }
+  function cur() { return S.set.currency === 'rial' ? 'ریال' : 'تومان'; }
+  function cv(n) { return S.set.currency === 'rial' ? n * 10 : n; } // مبالغ داخلی همیشه به تومان ذخیره می‌شوند
   function shortMoney(n) {
+    n = cv(n);
     if (n >= 1e9) return num(n / 1e9, 1) + ' میلیارد';
     if (n >= 1e6) return num(n / 1e6, 1) + ' م';
     if (n >= 1e3) return num(n / 1e3, 0) + ' هزار';
@@ -79,6 +95,101 @@
     return 'حدود ' + num(Math.max(1, Math.round(min))) + ' دقیقه دیگر';
   }
 
+  // ---------- اعلان‌ها ----------
+  var LN = plugin('LocalNotifications');
+  var MS_ID = 100, DAILY_ID = 200;
+  var MS_BODY = [
+    '۲۰ دقیقه گذشت؛ ضربان قلب و فشار خون شما پایین آمده است.',
+    '۱۲ ساعت شد! مونوکسید کربن خون شما به حد طبیعی برگشته است.',
+    '۲ روز بدون سیگار؛ حس بویایی و چشایی شما دارد بهتر می‌شود.',
+    '۱۲ هفته شد! گردش خون و کار ریه‌های شما بهتر شده است.',
+    '۹ ماه! سرفه و تنگی نفس شما باید خیلی کمتر شده باشد.',
+    'یک سال کامل! خطر بیماری قلبی شما حدوداً نصف شده است.',
+    '۵ سال! خطر سکته برای شما کاهش چشمگیری داشته است.',
+    '۱۰ سال! خطر سرطان ریه حدوداً نصف شده است. بی‌نظیرید.'
+  ];
+  var DAILY_MSG = ['امروز چطور گذشت؟ حالتان را ثبت کنید.', 'هر روز بدون سیگار یک پیروزی است. سری به رها بزنید.', 'هوس داشتید؟ تمرین تنفس فقط چند دقیقه طول می‌کشد.'];
+
+  function notifPermission(ask) {
+    if (!LN) return Promise.resolve(false);
+    return LN.checkPermissions().then(function (p) {
+      if (p.display === 'granted') return true;
+      if (!ask) return false;
+      return LN.requestPermissions().then(function (r) { return r.display === 'granted'; });
+    }).catch(function () { return false; });
+  }
+  var channelReady = null;
+  function ensureChannel() {
+    if (!LN || !LN.createChannel) return Promise.resolve();
+    if (!channelReady) channelReady = LN.createChannel({ id: 'raha', name: 'یادآورها و مراحل سلامتی', importance: 4, vibration: true }).catch(function () {});
+    return channelReady;
+  }
+  // همه‌ی اعلان‌های آینده را از نو تنظیم می‌کند
+  function reschedule(askPermission) {
+    if (!LN || !S.ready) return Promise.resolve();
+    var ids = [{ id: DAILY_ID }];
+    for (var i = 0; i < MILESTONES.length; i++) ids.push({ id: MS_ID + i });
+    return LN.cancel({ notifications: ids }).catch(function () {}).then(function () {
+      if (!S.set.notifMilestones && !S.set.daily) return;
+      return notifPermission(askPermission).then(function (ok) {
+        if (!ok) return;
+        return ensureChannel().then(function () {
+          var list = [], now = Date.now();
+          if (S.set.notifMilestones) {
+            MILESTONES.forEach(function (m, i) {
+              var at = S.quitAt + m.t * 60000;
+              if (at > now + 5000) list.push({ id: MS_ID + i, channelId: 'raha', title: 'یک قدم دیگر برای سلامتی شما', body: MS_BODY[i], schedule: { at: new Date(at), allowWhileIdle: true }, extra: { go: 'health' } });
+            });
+          }
+          if (S.set.daily) {
+            var hm = S.set.dailyTime.split(':');
+            list.push({ id: DAILY_ID, channelId: 'raha', title: 'رها', body: DAILY_MSG[Math.floor(Math.random() * DAILY_MSG.length)], schedule: { on: { hour: +hm[0], minute: +hm[1] }, allowWhileIdle: true }, extra: { go: 'home' } });
+          }
+          if (list.length) return LN.schedule({ notifications: list });
+        });
+      });
+    }).catch(function () {});
+  }
+  if (LN) {
+    try {
+      LN.addListener('localNotificationActionPerformed', function (a) {
+        var g = a && a.notification && a.notification.extra && a.notification.extra.go;
+        if (g) go(g);
+      });
+    } catch (e) {}
+  }
+
+  // ---------- به‌روزرسانی ----------
+  function checkUpdate(silent) {
+    if (!silent) toast('در حال بررسی…');
+    return fetch('https://api.github.com/repos/' + UPDATE_REPO + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (rel) {
+        S.lastUpdateCheck = Date.now(); save();
+        var m = /(\d+)$/.exec(rel.tag_name || ''), code = m ? +m[1] : 0;
+        var apk = (rel.assets || []).filter(function (a) { return /\.apk$/i.test(a.name); })[0];
+        if (code > APP_VERSION.code && apk) {
+          sheet('<div class="h2">نسخه‌ی جدید آماده است</div><div class="muted" style="line-height:1.9">نسخه‌ی ' + fa(String(rel.tag_name).replace(/^v/, '')) + ' منتشر شده است. فایل را دانلود و نصب کنید؛ اطلاعات شما حفظ می‌شود.</div>' +
+            '<button class="primary" data-url="' + esc(apk.browser_download_url) + '">دانلود نسخه‌ی جدید</button><button class="ghost" data-close>بعداً</button>');
+        } else if (!silent) toast('شما آخرین نسخه را دارید');
+      })
+      .catch(function () { if (!silent) toast('دسترسی به سرور به‌روزرسانی ممکن نشد'); });
+  }
+
+  // جشن کوچک وقتی مرحله‌ی تازه‌ای کامل شده
+  function celebrateIfNeeded() {
+    if (!S.ready) return;
+    var done = milestoneState().done;
+    if (S.seenMs < 0 || S.seenMs > done) { S.seenMs = done; save(); return; }
+    if (done > S.seenMs) {
+      var m = MILESTONES[done - 1];
+      S.seenMs = done; save();
+      sheet('<div class="ring" style="align-self:center">' + fa(done) + '/' + fa(MILESTONES.length) + '</div>' +
+        '<div class="h2" style="text-align:center">یک مرحله‌ی تازه کامل شد!</div><div class="muted" style="text-align:center;line-height:1.9">' + m.title + '</div>' +
+        '<button class="primary" data-close>عالی</button>');
+    }
+  }
+
   // ---------- آیکن‌ها ----------
   var I = {
     bell: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
@@ -94,11 +205,12 @@
     user: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
     drop: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.7l5.7 5.7a8 8 0 1 1-11.3 0z"/></svg>',
     timer: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg>',
+    gear: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     walk: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 3v3M7 12l3-4 4 2 3 3"/></svg>'
   };
 
   // ---------- ناوبری ----------
-  var TABS = [['home', 'خانه', I.home], ['health', 'سلامتی', I.heart], ['sos', 'تنفس', I.breath], ['progress', 'پیشرفت', I.chart], ['plan', 'برنامه من', I.user]];
+  var TABS = [['home', 'خانه', I.home], ['health', 'سلامتی', I.heart], ['sos', 'تنفس', I.breath], ['progress', 'پیشرفت', I.chart], ['settings', 'تنظیمات', I.gear]];
   function nav(active) {
     return '<nav class="tabs">' + TABS.map(function (t) {
       return '<a href="#' + t[0] + '" class="' + (t[0] === active ? 'on' : '') + '">' + t[2] + t[1] + '</a>';
@@ -119,6 +231,7 @@
     $('#app').innerHTML = html;
     window.scrollTo(0, 0);
     if (AFTER[r]) AFTER[r]();
+    if (r === 'home') celebrateIfNeeded();
     var meta = document.querySelector('meta[name=theme-color]');
     if (meta) meta.setAttribute('content', r === 'sos' ? '#14211B' : '#F3F5F1');
   }
@@ -134,7 +247,7 @@
     return '<div class="screen">' +
       '<div class="row"><div class="col"><div class="muted">' + esc(todayFa.format(new Date())) + '</div>' +
       '<div class="h1">سلام' + (S.name ? '، ' + esc(S.name) : '') + '</div></div>' +
-      '<button class="icon-btn" aria-label="اعلان‌ها" data-act="soon">' + I.bell + '</button></div>' +
+      '<a class="icon-btn" href="#settings" aria-label="تنظیمات اعلان‌ها">' + I.bell + '</a></div>' +
       '<div class="hero"><div style="font-size:14px;font-weight:500;opacity:.9">مدت زمانی که سیگار نکشیده‌اید</div>' +
       '<div class="units"><div class="unit"><div class="big" id="c-d">۰</div><div class="lbl">روز</div></div>' +
       '<div class="unit"><div class="mid" id="c-h">۰۰</div><div class="lbl">ساعت</div></div>' +
@@ -142,7 +255,7 @@
       '<div class="unit"><div class="mid" id="c-s">۰۰</div><div class="lbl">ثانیه</div></div></div>' +
       '<div class="sep"></div><div class="grid3">' +
       '<div class="col"><div class="stat-v" id="s-n">' + num(st.notSmoked) + '</div><div class="stat-l">نخ نکشیده</div></div>' +
-      '<div class="col"><div class="stat-v" id="s-m">' + shortMoney(st.money) + '</div><div class="stat-l">تومان پس‌انداز</div></div>' +
+      '<div class="col"><div class="stat-v" id="s-m">' + shortMoney(st.money) + '</div><div class="stat-l">' + cur() + ' پس‌انداز</div></div>' +
       '<div class="col"><div class="stat-v" id="s-l">' + lifeText(st.lifeMin) + '</div><div class="stat-l">عمر برگشته</div></div>' +
       '</div></div>' +
       '<a class="sos" href="#sos"><div class="ic">' + I.flame + '</div><div class="col" style="flex:1"><div style="font-size:17px;font-weight:700">هوس سیگار دارم</div>' +
@@ -191,7 +304,7 @@
       br.style.transitionDuration = (p.d / 1000) + 's';
       br.style.width = br.style.height = p.s + 'px';
       $('#br-l').textContent = p.l; $('#br-h').textContent = p.h;
-      if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} }
+      if (S.set.vibrate && navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} }
       breathTimer = setTimeout(function () { phase = (phase + 1) % 3; step(); }, p.d);
     }
     btn.onclick = function () {
@@ -244,8 +357,8 @@
       '<div class="goal"><div class="row"><div style="font-size:13px">هدف پس‌انداز</div>' +
       '<button data-act="goal" style="min-height:32px;border-radius:16px;border:none;background:#fff;color:var(--amber-ink);font-size:12px;font-weight:700;padding:0 12px">' + (goalAmt ? 'ویرایش' : 'تعیین هدف') + '</button></div>' +
       '<div style="font-size:18px;font-weight:800;color:var(--ink)">' + (S.goal.name ? esc(S.goal.name) : 'برای پولی که جمع می‌شود یک هدف بگذارید') + '</div>' +
-      '<div class="row" style="justify-content:flex-start;align-items:baseline;gap:6px"><div class="amt">' + num(Math.round(saved)) + '</div>' +
-      '<div style="font-size:13px">' + (goalAmt ? 'از ' + num(goalAmt) + ' تومان' : 'تومان') + '</div></div>' +
+      '<div class="row" style="justify-content:flex-start;align-items:baseline;gap:6px"><div class="amt">' + num(Math.round(cv(saved))) + '</div>' +
+      '<div style="font-size:13px">' + (goalAmt ? 'از ' + num(cv(goalAmt)) + ' ' + cur() : cur()) + '</div></div>' +
       (goalAmt ? '<div class="bar"><div style="width:' + pct + '%"></div></div><div style="font-size:12px">' + (daysLeft ? 'با این روند، حدود ' + num(daysLeft) + ' روز دیگر به هدف می‌رسید' : 'به هدف رسیدید!') + '</div>' : '') +
       '</div>' +
       '<div class="card"><div class="row"><div class="h2">هوس‌های شکست‌خورده در ۷ روز</div><div class="muted small">' + num(beaten) + ' در کل</div></div>' +
@@ -254,6 +367,61 @@
       '<div class="row"><div class="h2">نشان‌ها</div><div class="muted">' + num(got) + ' از ' + num(BAD.length) + '</div></div>' +
       '<div class="grid4">' + BAD.map(function (b) { return '<div class="badge"><div class="m' + (b[2] ? ' on' : '') + '">' + b[0] + '</div>' + b[1] + '</div>'; }).join('') + '</div>' +
       '</div>' + nav('progress');
+  };
+
+  // ---------- تنظیمات ----------
+  function sw(key, on) {
+    return '<button class="switch' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" data-toggle="' + key + '"><span></span></button>';
+  }
+  function setRow(title, sub, right) {
+    return '<div class="srow"><div class="col" style="flex:1"><div class="st">' + title + '</div>' + (sub ? '<div class="muted small" style="line-height:1.7">' + sub + '</div>' : '') + '</div>' + right + '</div>';
+  }
+  VIEWS.settings = function () {
+    var st = S.set;
+    return '<div class="screen">' +
+      '<div class="h1">تنظیمات</div>' +
+
+      '<div class="sec">برنامه</div><div class="card sgroup">' +
+      '<a class="srow" href="#plan"><div class="col" style="flex:1"><div class="st">برنامه‌ی ترک</div><div class="muted small">' +
+      'روزی ' + num(S.cpd) + ' نخ · هر پاکت ' + shortMoney(S.packPrice) + ' ' + cur() + '</div></div>' + I.chev + '</a>' +
+      '</div>' +
+
+      '<div class="sec">اعلان‌ها</div><div class="card sgroup">' +
+      '<div id="perm-box"></div>' +
+      setRow('اعلان مراحل سلامتی', 'هر بار که بدنتان یک مرحله از بهبود را پشت سر بگذارد خبرتان می‌کنیم', sw('notifMilestones', st.notifMilestones)) +
+      setRow('یادآور روزانه', 'یک پیام کوتاه برای ثبت حال و ادامه‌ی مسیر', sw('daily', st.daily)) +
+      (st.daily ? setRow('ساعت یادآور', '', '<input type="time" class="input" id="daily-time" value="' + esc(st.dailyTime) + '" style="width:150px;direction:ltr;min-height:42px;padding:0 10px" aria-label="ساعت یادآور">') : '') +
+      '<div class="srow"><button class="chip" data-act="test-notif" style="width:100%">ارسال یک اعلان آزمایشی</button></div>' +
+      '</div>' +
+
+      '<div class="sec">عمومی</div><div class="card sgroup">' +
+      setRow('واحد پول', '', '<div class="seg"><button class="' + (st.currency === 'toman' ? 'on' : '') + '" data-cur="toman">تومان</button><button class="' + (st.currency === 'rial' ? 'on' : '') + '" data-cur="rial">ریال</button></div>') +
+      setRow('لرزش در تمرین تنفس', '', sw('vibrate', st.vibrate)) +
+      '</div>' +
+
+      '<div class="sec">به‌روزرسانی</div><div class="card sgroup">' +
+      setRow('نسخه‌ی فعلی', '', '<div class="muted" id="ver">' + (APP_VERSION.code ? fa(APP_VERSION.name) : APP_VERSION.name) + '</div>') +
+      setRow('بررسی خودکار', 'روزی یک بار هنگام باز کردن اپ', sw('autoUpdate', st.autoUpdate)) +
+      '<div class="srow"><button class="primary" data-act="update" style="min-height:48px;font-size:15px">بررسی به‌روزرسانی</button></div>' +
+      '</div>' +
+
+      '<div class="sec">داده‌ها</div><div class="card sgroup">' +
+      '<div class="srow"><button class="ghost" data-act="reset" style="color:#9B2C2C;text-decoration:none;font-weight:700;padding:0">پاک کردن همه‌ی اطلاعات</button></div>' +
+      '</div>' +
+      '<div class="muted small" style="text-align:center;padding:8px 0">رها — همراه شما برای زندگی بدون سیگار</div>' +
+      '</div>' + nav('settings');
+  };
+  AFTER.settings = function () {
+    var t = $('#daily-time');
+    if (t) t.addEventListener('change', function () { if (t.value) { S.set.dailyTime = t.value; save(); reschedule(false); toast('ساعت یادآور ذخیره شد'); } });
+    var box = $('#perm-box');
+    if (!IS_NATIVE) { box.innerHTML = '<div class="srow"><div class="muted small">اعلان‌ها فقط در نسخه‌ی نصبی اندروید کار می‌کنند.</div></div>'; return; }
+    notifPermission(false).then(function (ok) {
+      if (!ok && (S.set.notifMilestones || S.set.daily) && box.isConnected) {
+        box.innerHTML = '<div class="srow" style="background:var(--amber-tint);border-radius:14px;padding:12px"><div class="col" style="flex:1"><div class="st" style="color:var(--amber-ink)">اجازه‌ی نمایش اعلان داده نشده</div></div>' +
+          '<button class="chip on" data-act="perm">اجازه بده</button></div>';
+      }
+    });
   };
 
   // صفحه‌ی برنامه (هم شروع، هم ویرایش)
@@ -266,7 +434,7 @@
     var M = [['یک‌باره', 'از یک تاریخ مشخص، کامل کنار بگذار'], ['تدریجی', 'هر هفته تعداد را کم کن']];
     return '<div class="screen' + (isSetup ? ' no-nav' : '') + '">' +
       (isSetup ? '<div class="col" style="gap:8px"><div class="muted">به رها خوش آمدید</div><div style="font-size:24px;font-weight:800;line-height:1.5">بیایید برنامه‌ی ترک شما را بسازیم</div></div>'
-        : '<div class="h1">برنامه من</div>') +
+        : '<div class="title-bar"><a class="icon-btn" href="#settings" aria-label="بازگشت">' + I.back + '</a><div class="h1">برنامه‌ی ترک</div></div>') +
       '<div class="card"><div class="field"><label for="f-name">اسم شما (اختیاری)</label><input class="input" id="f-name" value="' + esc(draft.name) + '" maxlength="30"></div></div>' +
       '<div class="card" style="flex-direction:row;align-items:center;justify-content:space-between"><div class="col"><div style="font-size:15px;font-weight:700">روزی چند نخ می‌کشیدید؟</div><div class="muted small">تقریبی هم کافی است</div></div>' +
       '<div class="stepper"><button data-step="1" aria-label="افزایش">+</button><div class="v" id="f-cpd">' + num(draft.cpd) + '</div><button data-step="-1" aria-label="کاهش">−</button></div></div>' +
@@ -282,8 +450,7 @@
       '<button class="chip' + (draft.when === 'pick' ? ' on' : '') + '" data-when="pick">انتخاب تاریخ و ساعت</button></div>' +
       (draft.when === 'pick' ? '<input class="input" type="datetime-local" id="f-date" style="direction:ltr" aria-label="تاریخ ترک">' : '') + '</div>' +
       '<button class="primary" data-act="save">' + (isSetup ? 'شروع کنیم' : 'ذخیره') + '</button>' +
-      (S.ready ? '<button class="ghost" data-act="reset" style="color:var(--muted)">پاک کردن همه‌ی اطلاعات</button>' : '') +
-      '</div>' + (isSetup ? '' : nav('plan'));
+      '</div>' + (isSetup ? '' : nav('settings'));
   }
   VIEWS.setup = function () { return planView(!S.ready); };
   VIEWS.plan = function () { return planView(false); };
@@ -312,6 +479,20 @@
       document.querySelectorAll('.mood').forEach(function (b) { b.classList.toggle('on', b === t); });
       return;
     }
+    if (t.hasAttribute('data-toggle')) {
+      var key = t.getAttribute('data-toggle'), on = !S.set[key];
+      S.set[key] = on; save();
+      if (key === 'notifMilestones' || key === 'daily') {
+        reschedule(on).then(function () { render(); });
+      } else render();
+      return;
+    }
+    if (t.hasAttribute('data-cur')) { S.set.currency = t.getAttribute('data-cur'); save(); render(); return; }
+    if (t.hasAttribute('data-url')) {
+      var u = t.getAttribute('data-url');
+      if (IS_NATIVE) location.href = u; else window.open(u, '_blank');
+      return;
+    }
     if (t.hasAttribute('data-step')) {
       readDraftInputs();
       draft.cpd = Math.min(80, Math.max(1, draft.cpd + +t.getAttribute('data-step')));
@@ -338,14 +519,32 @@
         }
         S.name = draft.name; S.cpd = draft.cpd; S.perPack = draft.perPack; S.packPrice = draft.packPrice;
         S.method = draft.method; S.reasons = draft.reasons.slice(); S.quitAt = when;
-        var first = !S.ready; S.ready = true; save(); draft = null;
-        if (first) go('home'); else { toast('ذخیره شد'); render(); }
+        var first = !S.ready; S.ready = true; S.seenMs = -1; save(); draft = null;
+        reschedule(first);
+        if (first) go('home'); else { toast('ذخیره شد'); go('settings'); }
         return;
       }
       case 'reset':
         sheet('<div class="h2">همه‌ی اطلاعات پاک شود؟</div><div class="muted">این کار برگشت‌پذیر نیست.</div>' +
           '<button class="primary" id="do-reset" style="background:#9B2C2C">بله، پاک کن</button><button class="ghost" data-close>انصراف</button>', function (bg) {
-          bg.querySelector('#do-reset').onclick = function () { try { localStorage.removeItem(KEY); } catch (x) {} location.hash = '#setup'; location.reload(); };
+          bg.querySelector('#do-reset').onclick = function () { S.ready = false; S.set.notifMilestones = S.set.daily = false; reschedule(false); try { localStorage.removeItem(KEY); } catch (x) {} if (LN) { var ids = [{ id: DAILY_ID }]; for (var q = 0; q < MILESTONES.length; q++) ids.push({ id: MS_ID + q }); LN.cancel({ notifications: ids }).catch(function () {}); } setTimeout(function () { location.hash = '#setup'; location.reload(); }, 300); };
+        });
+        return;
+      case 'update': checkUpdate(false); return;
+      case 'perm':
+        notifPermission(true).then(function (ok) {
+          if (ok) { reschedule(false); toast('اعلان‌ها فعال شد'); }
+          else toast('اجازه داده نشد. از تنظیمات گوشی، بخش برنامه‌ها › رها › اعلان‌ها، فعالش کنید.');
+          render();
+        });
+        return;
+      case 'test-notif':
+        if (!LN) { toast('اعلان‌ها فقط در نسخه‌ی نصبی اندروید کار می‌کنند'); return; }
+        notifPermission(true).then(function (ok) {
+          if (!ok) { toast('ابتدا اجازه‌ی نمایش اعلان را بدهید'); render(); return; }
+          ensureChannel().then(function () {
+            return LN.schedule({ notifications: [{ id: 999, channelId: 'raha', title: 'رها', body: 'اعلان‌ها درست کار می‌کنند. به مسیرتان ادامه دهید!', schedule: { at: new Date(Date.now() + 3000), allowWhileIdle: true } }] });
+          }).then(function () { toast('تا ۳ ثانیه‌ی دیگر یک اعلان می‌آید'); }).catch(function () { toast('ارسال اعلان ممکن نشد'); });
         });
         return;
       case 'beat':
@@ -356,7 +555,7 @@
         sheet('<div class="h2">اشکالی ندارد، ادامه بده</div><div class="muted" style="line-height:1.9">یک لغزش به معنای شکست نیست. می‌خواهید شمارنده از همین الان دوباره شروع شود، یا فقط ثبت شود و شمارنده ادامه پیدا کند؟</div>' +
           '<button class="primary" id="slip-log">فقط ثبت کن</button><button class="primary" id="slip-reset" style="background:var(--ink)">شمارنده از نو</button><button class="ghost" data-close>انصراف</button>', function (bg) {
           bg.querySelector('#slip-log').onclick = function () { S.slips.push(Date.now()); save(); bg.remove(); go('home'); };
-          bg.querySelector('#slip-reset').onclick = function () { S.slips.push(Date.now()); S.quitAt = Date.now(); save(); bg.remove(); go('home'); };
+          bg.querySelector('#slip-reset').onclick = function () { S.slips.push(Date.now()); S.quitAt = Date.now(); S.seenMs = -1; save(); reschedule(false); bg.remove(); go('home'); };
         });
         return;
       case 'reasons':
@@ -388,7 +587,6 @@
           };
         });
         return;
-      case 'soon': toast('یادآورها در نسخه‌ی بعدی اضافه می‌شوند'); return;
     }
   });
 
@@ -400,7 +598,7 @@
     }
   });
 
-  window.addEventListener('hashchange', function () { if (route() !== 'setup' && route() !== 'plan') draft = null; render(); });
+  window.addEventListener('hashchange', function () { document.querySelectorAll('.sheet-bg').forEach(function (x) { x.remove(); }); if (route() !== 'setup' && route() !== 'plan') draft = null; render(); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) render(); });
 
   // دکمه‌ی برگشت اندروید
@@ -409,9 +607,15 @@
     if (App) App.addListener('backButton', function () {
       var open = document.querySelector('.sheet-bg');
       if (open) { open.remove(); return; }
-      if (route() === 'home' || (!S.ready && route() === 'setup')) App.exitApp(); else go('home');
+      if (route() === 'home' || (!S.ready && route() === 'setup')) App.exitApp(); else go(route() === 'plan' ? 'settings' : 'home');
     });
   } catch (e) {}
 
   render();
+
+  // کارهای هنگام باز شدن اپ
+  if (S.ready) reschedule(false);
+  if (IS_NATIVE && S.ready && S.set.autoUpdate && (!S.lastUpdateCheck || Date.now() - S.lastUpdateCheck > 86400000)) {
+    setTimeout(function () { checkUpdate(true); }, 3000);
+  }
 })();

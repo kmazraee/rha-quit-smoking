@@ -28,9 +28,19 @@ jobs:
         run: npm ci
 
       - name: ساخت پروژه‌ی اندروید
+        env:
+          N: ${{ github.run_number }}
         run: |
+          echo "{\"code\": $N, \"name\": \"0.1.$N\"}" > www/version.json
           npx cap add android
+          mkdir -p android/app/src/main/res/drawable
+          cp resources/ic_stat_raha.xml android/app/src/main/res/drawable/
+          sed -i "s/versionCode 1$/versionCode $N/; s/versionName \"1.0\"/versionName \"0.1.$N\"/" android/app/build.gradle
+          grep -n "version" android/app/build.gradle
           npx cap sync android
+          # کلید امضای ثابت، تا نسخه‌های بعدی روی نسخه‌ی قبلی نصب شوند
+          mkdir -p ~/.android
+          cp signing/debug.keystore ~/.android/debug.keystore
 
       - name: ساخت فایل APK
         working-directory: android
