@@ -1,3 +1,5 @@
 node_modules/
 android/
 *.apk
+www/lib/
+www/books/books.json

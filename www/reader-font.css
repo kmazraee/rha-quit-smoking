@@ -1,0 +1,4 @@
+@font-face{font-family:"VazirmatnR";src:url("fonts/Vazirmatn-Regular.woff2") format("woff2");font-weight:400}
+@font-face{font-family:"VazirmatnR";src:url("fonts/Vazirmatn-Bold.woff2") format("woff2");font-weight:700}
+body,p,div,span,li,td,th,h1,h2,h3,h4,h5,h6,blockquote{font-family:"VazirmatnR",serif !important}
+body{line-height:1.9 !important}

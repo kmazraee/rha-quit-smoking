@@ -1,9 +1,11 @@
 name: ساخت APK اندروید
 
+# فقط وقتی دستور ساخت داده شود اجرا می‌شود:
+# یا از صفحه‌ی Actions با دکمه‌ی Run workflow، یا با فرستادن برچسبی که با build- شروع شود
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+  push:
+    tags: ['build-*']
 
 permissions:
   contents: write
@@ -32,6 +34,7 @@ jobs:
           N: ${{ github.run_number }}
         run: |
           echo "{\"code\": $N, \"name\": \"0.1.$N\"}" > www/version.json
+          node scripts/prepare.mjs
           npx cap add android
           mkdir -p android/app/src/main/res/drawable
           cp resources/ic_stat_raha.xml android/app/src/main/res/drawable/
