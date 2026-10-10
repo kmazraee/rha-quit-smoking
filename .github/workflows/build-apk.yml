@@ -4,8 +4,14 @@ name: ساخت APK اندروید
 # یا از صفحه‌ی Actions با دکمه‌ی Run workflow، یا با فرستادن کد به شاخه‌ی build
 on:
   workflow_dispatch:
+    inputs:
+      store:
+        description: 'فروشگاه (bazaar یا myket)'
+        type: choice
+        options: [bazaar, myket]
+        default: bazaar
   push:
-    branches: [build]
+    branches: [build, build-myket]
 
 permissions:
   contents: write
@@ -33,9 +39,13 @@ jobs:
         shell: bash
         env:
           N: ${{ github.run_number }}
+          STORE_INPUT: ${{ github.event.inputs.store }}
         run: |
           exec > >(tee -a "$GITHUB_WORKSPACE/build.log") 2>&1
-          echo "{\"code\": $N, \"name\": \"0.1.$N\", \"store\": \"bazaar\"}" > www/version.json
+          STORE="${STORE_INPUT:-bazaar}"
+          if [ "$GITHUB_REF_NAME" = "build-myket" ]; then STORE=myket; fi
+          echo "STORE=$STORE" >> "$GITHUB_ENV"
+          echo "{\"code\": $N, \"name\": \"0.1.$N\", \"store\": \"$STORE\"}" > www/version.json
           node scripts/prepare.mjs
           npx cap add android
           # ویجت، آیکن اعلان و شماره‌ی نسخه
@@ -60,24 +70,24 @@ jobs:
           exec > >(tee -a "$GITHUB_WORKSPACE/build.log") 2>&1
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk ../raha-v0.1.${{ github.run_number }}.apk
+          cp app/build/outputs/apk/release/app-release.apk ../raha-${{ env.STORE }}-v0.1.${{ github.run_number }}.apk
           # اطمینان از اینکه فایل با کلید ثابت امضا شده (وگرنه روی نسخه‌ی قبلی نصب نمی‌شود)
           SIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
-          $SIGNER verify --print-certs ../raha-v0.1.${{ github.run_number }}.apk | tee /tmp/certs.txt
+          $SIGNER verify --print-certs ../raha-${{ env.STORE }}-v0.1.${{ github.run_number }}.apk | tee /tmp/certs.txt
           grep -qi "SHA-256 digest: 7a26b616373c7dc9f2e87e60c3cb9ba70a5e61f56be9b986e576edd9323dd808" /tmp/certs.txt || { echo "کلید امضا اشتباه است"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
           name: raha-apk
-          path: raha-v0.1.*.apk
+          path: raha-*-v0.1.*.apk
 
       - name: انتشار در بخش Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.1.${{ github.run_number }}
-          name: رها — نسخه‌ی آزمایشی ${{ github.run_number }}
+          name: رها ${{ github.run_number }} (${{ env.STORE }})
           body: فایل APK را روی گوشی اندروید دانلود و نصب کنید.
-          files: raha-v0.1.*.apk
+          files: raha-*-v0.1.*.apk
 
       # اگر ساخت شکست خورد، گزارش کامل خطا به‌صورت یک انتشار آزمایشی ذخیره می‌شود تا بشود علت را خواند
       - name: ذخیره‌ی گزارش خطا

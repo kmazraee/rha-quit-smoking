@@ -203,6 +203,8 @@ window.RAHA_TOGETHER = function (A) {
     A.copy(text);
   }
 
+  A.friendsServer = function () { return server; };
+
   // ---------- آیکن سربرگ و کارت صفحه‌ی خانه ----------
   A.togetherIcon = function () {
     if (!server) return '';

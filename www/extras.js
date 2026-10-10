@@ -280,27 +280,35 @@ window.RAHA_EXTRAS = function (A) {
   var HELPS = ['تمرین تنفس', 'آب', 'قدم زدن', 'صبر کردن', 'بازی', 'کارت انگیزشی', 'حرف زدن با کسی', 'خوردن چیزی', 'دلیل‌هایم'];
   A.HELPS = HELPS;
   V.cravings = function () {
-    var T = A.TRIGGERS, list = S.cravings.map(function (c, i) { return { c: c, i: i }; }).reverse();
-    var INT = ['', 'کم', 'متوسط', 'شدید'];
-    return '<div class="screen">' + header('تاریخچه‌ی هوس‌ها', 'progress') +
-      '<div class="muted">' + num(S.cravings.length) + ' هوس را پشت سر گذاشته‌اید.</div>' +
-      (list.length ? '<div class="card" style="padding:4px 16px;gap:0">' + list.map(function (x) {
-        var c = typeof x.c === 'number' ? { t: x.c } : x.c;
-        var tags = [];
-        if (typeof c.g === 'number' && c.g >= 0 && T[c.g]) tags.push(T[c.g][0]);
-        if (c.i) tags.push('شدت ' + INT[c.i]);
-        return '<div class="mark-row"><div class="col" style="flex:1;gap:4px"><div class="muted small">' + faDT.format(new Date(c.t)) + '</div>' +
-          (tags.length ? '<div class="lib-tags">' + tags.map(function (s) { return '<span>' + s + '</span>'; }).join('') + '</div>' : '') +
-          (c.h && c.h.length ? '<div class="small">کمک کرد: ' + c.h.map(function (h) { return HELPS[h] || ''; }).join('، ') + '</div>' : '') +
-          (c.n ? '<div class="small muted" style="line-height:1.8">' + esc(c.n) + '</div>' : '') + '</div>' +
-          '<button class="icon-btn" style="width:40px;height:40px;background:transparent" data-cr-del="' + x.i + '" aria-label="حذف">' + I.trash + '</button></div>';
-      }).join('') + '</div>' : '<div class="muted small">هنوز هوسی ثبت نشده است.</div>') +
+    var T = A.TRIGGERS, INT = ['', 'کم', 'متوسط', 'شدید'];
+    var items = S.cravings.map(function (c, i) { return { k: 'c', i: i, c: typeof c === 'number' ? { t: c } : c }; })
+      .concat(S.slips.map(function (x, i) { return { k: 's', i: i, c: x }; }))
+      .sort(function (a, b) { return b.c.t - a.c.t; });
+    var sc = S.slips.reduce(function (a, x) { return a + (x.n || 1); }, 0);
+    return '<div class="screen">' + header('تاریخچه‌ی هوس‌ها و لغزش‌ها', 'progress') +
+      '<div class="grid2"><div class="card" style="padding:12px;align-items:center;gap:2px"><b style="font-size:22px;color:var(--green)">' + num(S.cravings.length) + '</b><span class="muted small">هوس شکست‌خورده</span></div>' +
+      '<div class="card" style="padding:12px;align-items:center;gap:2px"><b style="font-size:22px;color:#C0533A">' + num(sc) + '</b><span class="muted small">نخ در لغزش‌ها</span></div></div>' +
+      '<button class="chip" data-x="add-slip" style="min-height:46px">ثبت لغزش (یک یا چند نخ)</button>' +
+      (items.length ? '<div class="card" style="padding:4px 16px;gap:0">' + items.map(function (x) {
+        var c = x.c, tags = [], slip = x.k === 's';
+        if (slip) tags.push('<span class="tag-slip">' + num(c.n || 1) + ' نخ' + (c.reset ? ' · شروع دوباره' : '') + '</span>');
+        if (typeof c.g === 'number' && c.g >= 0 && T[c.g]) tags.push('<span>' + T[c.g][0] + '</span>');
+        if (!slip && c.i) tags.push('<span>شدت ' + INT[c.i] + '</span>');
+        var note = slip ? c.note : c.n;
+        return '<div class="mark-row"><span class="hist-dot' + (slip ? ' slip' : '') + '"></span><div class="col" style="flex:1;gap:4px"><div class="small" style="font-weight:700">' + (slip ? 'لغزش' : 'هوس شکست‌خورده') + ' <span class="muted" style="font-weight:400">· ' + faDT.format(new Date(c.t)) + '</span></div>' +
+          (tags.length ? '<div class="lib-tags">' + tags.join('') + '</div>' : '') +
+          (!slip && c.h && c.h.length ? '<div class="small">کمک کرد: ' + c.h.map(function (h) { return HELPS[h] || ''; }).join('، ') + '</div>' : '') +
+          (note ? '<div class="small muted" style="line-height:1.8">' + esc(note) + '</div>' : '') + '</div>' +
+          '<button class="icon-btn" style="width:40px;height:40px;background:transparent" data-cr-del="' + x.k + x.i + '" aria-label="حذف">' + I.trash + '</button></div>';
+      }).join('') + '</div>' : '<div class="muted small">هنوز چیزی ثبت نشده است.</div>') +
       '</div>' + A.nav('progress');
   };
   AF.cravings = function () {
     $('#app').onclick = function (e) {
+      if (e.target.closest('[data-x="add-slip"]')) { A.slipSheet(); return; }
       var t = e.target.closest('[data-cr-del]'); if (!t) return;
-      S.cravings.splice(+t.getAttribute('data-cr-del'), 1); A.save(); A.render();
+      var v = t.getAttribute('data-cr-del'), arr = v[0] === 's' ? S.slips : S.cravings;
+      arr.splice(+v.slice(1), 1); A.save(); if (v[0] === 's') { A.reschedule(false); A.syncWidget(); } A.render();
     };
     A.onLeave(function () { $('#app').onclick = null; });
   };
@@ -459,7 +467,7 @@ window.RAHA_EXTRAS = function (A) {
       '<a class="card" href="tel:4030" style="gap:6px"><div class="row"><div class="h2">خط مشاوره‌ی ترک دخانیات</div><div style="font-size:22px;font-weight:800;color:var(--green)">۴۰۳۰</div></div>' +
       '<div class="muted small" style="line-height:1.9">سامانه‌ی وزارت بهداشت. بعد از تماس، طبق اعلام وزارت بهداشت گزینه‌ی ۵ را برای مشاوره‌ی ترک دخانیات انتخاب کنید. ساعت پاسخگویی ممکن است محدود به ساعات اداری باشد.</div></a>' +
       '<div class="card" style="gap:6px"><div class="h2">مراکز خدمات جامع سلامت</div><div class="muted small" style="line-height:1.9">در مراکز بهداشت محله، مشاوره‌ی ترک دخانیات رایگان است. پزشک می‌تواند درباره‌ی جایگزین‌های نیکوتین (چسب، آدامس، قرص مکیدنی) یا داروهای ترک راهنمایی کند. داروها فقط با تجویز پزشک مصرف شوند.</div></div>' +
-      '<div class="card" style="gap:6px;background:#FBE9E7"><div class="h2" style="color:#8A2C1C">فوریت</div><div class="small" style="line-height:1.9;color:#5A2418">اگر درد قفسه‌ی سینه، تنگی نفس شدید یا علائم نگران‌کننده‌ی دیگری دارید، فوراً با اورژانس ۱۱۵ تماس بگیرید.</div>' +
+      '<div class="card" style="gap:6px;background:var(--red-tint)"><div class="h2" style="color:var(--red-ink)">فوریت</div><div class="small" style="line-height:1.9;color:var(--red-ink)">اگر درد قفسه‌ی سینه، تنگی نفس شدید یا علائم نگران‌کننده‌ی دیگری دارید، فوراً با اورژانس ۱۱۵ تماس بگیرید.</div>' +
       '<a class="chip on" href="tel:115" style="align-self:flex-start;display:flex;align-items:center;background:#9B2C2C;border-color:#9B2C2C">تماس با ۱۱۵</a></div>' +
       '</div>' + A.nav('home');
   };
@@ -504,6 +512,7 @@ window.RAHA_EXTRAS = function (A) {
       '<p style="margin:0"><b>رها برای استفاده به شماره تلفن، ایمیل یا ثبت‌نام نیاز ندارد.</b></p>' +
       '<p style="margin:0">همه‌ی اطلاعاتی که وارد می‌کنید (برنامه‌ی ترک، حال روزانه، هوس‌ها، دفترچه، نشانه‌های کتاب‌ها و تنظیمات) روی همین گوشی ذخیره می‌شود.</p>' +
       '<p style="margin:0"><b>بخش «با هم ترک کنیم» (اختیاری):</b> فقط اگر خودتان این بخش را روشن کنید، این اطلاعات روی سرور رها نگه‌داری می‌شود تا دوستانتان ببینند: نام نمایشی که انتخاب می‌کنید، تاریخ ترک، تعداد نخ روزانه، نخ‌های نکشیده، پس‌انداز (اگر بخواهید)، حال امروز، روزهای پیاپی تعهد، تعداد هوس‌های شکست‌خورده و تعداد نشان‌ها؛ و پیام‌هایی که با دوستانتان رد و بدل می‌کنید (پیام‌ها بعد از ۳۰ روز پاک می‌شوند). فقط کسانی که کد دوستی شما را وارد کرده‌اند این‌ها را می‌بینند. با «خروج و پاک کردن اطلاعاتم» در همان بخش، یا «پاک کردن همه‌ی اطلاعات» در تنظیمات، همه‌ی این اطلاعات از سرور هم پاک می‌شود. دفترچه، یادداشت‌ها، هوس‌ها و دلیل‌های شما هیچ‌وقت به سرور فرستاده نمی‌شود.</p>' +
+      '<p style="margin:0"><b>نظر و پیشنهاد:</b> فقط وقتی خودتان در تنظیمات فرم نظر را پر کنید و «فرستادن» را بزنید، متن نظر، راه تماسی که خودتان بنویسید (اختیاری)، نسخه‌ی اپ و تعداد روزهای ترک برای سازنده‌ی رها فرستاده می‌شود.</p>' +
       '<p style="margin:0">فایل پشتیبان فقط وقتی ساخته می‌شود که خودتان بخواهید و فقط به جایی می‌رود که خودتان انتخاب کنید.</p>' +
       '<p style="margin:0">اپ برای اعلان‌های مراحل سلامتی، یادآورها و پیام‌های دوستان از اجازه‌ی «اعلان» استفاده می‌کند. اینترنت فقط برای بخش «با هم» و برای باز کردن ویدیوها، پادکست‌ها و مقاله‌هایی لازم است که خودتان انتخاب می‌کنید؛ آن محتواها در سایت سازندگانشان باز می‌شوند.</p>' +
       '<p style="margin:0">با پاک کردن اپ یا زدن «پاک کردن همه‌ی اطلاعات» در تنظیمات، همه‌ی اطلاعات از گوشی حذف می‌شود.</p>' +

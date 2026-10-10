@@ -145,7 +145,7 @@ window.RAHA_LIB = function (A) {
       (b.description ? '<div class="muted" style="line-height:2">' + esc(b.description) + '</div>' : '') +
       '<div class="grid2">' +
       (b.doc ? '<a class="primary" style="display:flex;align-items:center;justify-content:center;gap:8px" href="#read/' + encodeURIComponent(b.id) + '">' + A.I.bookOpen + (r[b.doc.type] ? 'ادامه‌ی خواندن' : 'خواندن') + '</a>' : '') +
-      (b.tracks.length ? '<a class="primary" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--ink)" href="#listen/' + encodeURIComponent(b.id) + '">' + A.I.headphones + (r.audio ? 'ادامه‌ی گوش دادن' : 'گوش دادن') + '</a>' : '') +
+      (b.tracks.length ? '<a class="primary" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--night)" href="#listen/' + encodeURIComponent(b.id) + '">' + A.I.headphones + (r.audio ? 'ادامه‌ی گوش دادن' : 'گوش دادن') + '</a>' : '') +
       '</div>' +
       '<div class="row"><div class="h2">نشانه‌ها و یادداشت‌ها</div><div class="muted small">' + num(r.marks.length) + '</div></div>' +
       (marks.length ? '<div class="card" style="padding:4px 14px;gap:0">' + marks.map(function (x) { return markLine(b, x.m, x.i); }).join('') + '</div>'

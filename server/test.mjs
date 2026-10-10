@@ -99,6 +99,13 @@ r = await call('DELETE', '/api/me', ali.token);
 ok(r.status === 200, 'delete account');
 ok((await call('GET', '/api/me', ali.token)).status === 401, 'deleted token no longer works');
 
+// نظر کاربران
+r = await call('POST', '/api/feedback', null, { text: 'اپ خوبی است', contact: 'a@b.c', days: 9 });
+ok(r.status === 200, 'feedback saved');
+r = await call('POST', '/api/feedback', null, { text: ' ' });
+ok(r.status === 400, 'empty feedback rejected');
+ok((await call('GET', '/api/admin/feedback', null)).status === 401, 'admin needs token');
+
 server.close();
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`همه‌ی ${passed} آزمون سرور موفق بود`);

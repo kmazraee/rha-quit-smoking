@@ -17,6 +17,9 @@
   };
   var DEFAULT_SET = { notifMilestones: true, daily: true, dailyTime: '21:00', vibrate: true, currency: 'toman', autoUpdate: true, backupRemind: true };
   S.set = Object.assign({}, DEFAULT_SET, S.set || {});
+  if (!Array.isArray(S.slips)) S.slips = [];
+  // لغزش‌های قدیمی فقط زمان بودند؛ حالا {t: زمان، n: تعداد نخ، g: موقعیت، note}
+  S.slips = S.slips.map(function (x) { return typeof x === 'number' ? { t: x, n: 1, g: -1 } : x; });
   if (typeof S.seenMs !== 'number') S.seenMs = -1; // تعداد مراحلی که جشنشان نمایش داده شده (-۱ یعنی هنوز مقداردهی نشده)
 
   // ---------- افزونه‌های بومی (فقط داخل اپ اندروید وجود دارند) ----------
@@ -69,13 +72,26 @@
     return 'هر پاکت ' + shortMoney(S.packPrice) + ' ' + cur();
   }
   function elapsedMs() { return Math.max(0, Date.now() - S.quitAt); }
+  // لغزش‌ها از لحظه‌ی ترک به بعد
+  function slipsSinceQuit() { return S.slips.filter(function (x) { return x.t >= S.quitAt && x.t <= Date.now(); }); }
+  function slipCigs() { return slipsSinceQuit().reduce(function (a, x) { return a + (x.n || 1); }, 0); }
+  function lastSlip() { var l = slipsSinceQuit(); return l.length ? l.reduce(function (a, x) { return x.t > a.t ? x : a; }) : null; }
+  // زمان از آخرین نخ (برای مراحل کوتاه‌مدت سلامتی)
+  function cleanMs() { var l = lastSlip(); return Math.max(0, Date.now() - (l ? l.t : S.quitAt)); }
   function stats() {
     var ms = elapsedMs();
     var days = ms / 86400000;
-    var notSmoked = Math.floor(days * S.cpd);
+    var slipped = slipCigs();
+    var notSmoked = Math.max(0, Math.floor(days * S.cpd) - slipped);
     var money = notSmoked * costPerCig();
     var lifeMin = notSmoked * 11; // برآورد رایج: حدود ۱۱ دقیقه برای هر نخ
-    return { ms: ms, days: days, notSmoked: notSmoked, money: money, lifeMin: lifeMin };
+    return { ms: ms, days: days, notSmoked: notSmoked, money: money, lifeMin: lifeMin, slipped: slipped, cleanMs: cleanMs() };
+  }
+  function cleanText(ms) {
+    var m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
+    if (d) return num(d) + ' روز' + (h ? ' و ' + num(h) + ' ساعت' : '');
+    if (h) return num(h) + ' ساعت و ' + num(m % 60) + ' دقیقه';
+    return num(m) + ' دقیقه';
   }
   function lifeText(m) {
     if (m >= 1440) return num(Math.floor(m / 1440)) + ' روز';
@@ -94,12 +110,13 @@
     { t: 5 * Y, title: 'خطر سکته کاهش چشمگیر دارد', when: '۵ سال' },
     { t: 10 * Y, title: 'خطر سرطان ریه حدوداً نصف می‌شود', when: '۱۰ سال' }
   ];
+  // مراحل تا ۲ روز به آخرین نخ بستگی دارند و بعد از لغزش دوباره شمرده می‌شوند؛ مراحل بلندمدت از روز ترک
   function milestoneState() {
-    var m = elapsedMs() / 60000;
-    var list = MILESTONES.map(function (x) { return { title: x.title, when: x.when, t: x.t, p: Math.min(100, m / x.t * 100) }; });
+    var mAll = elapsedMs() / 60000, mClean = cleanMs() / 60000;
+    var list = MILESTONES.map(function (x) { var m = x.t <= 2 * D ? mClean : mAll; return { title: x.title, when: x.when, t: x.t, p: Math.min(100, m / x.t * 100), m: m }; });
     var done = list.filter(function (x) { return x.p >= 100; }).length;
     var next = list.filter(function (x) { return x.p < 100; })[0] || null;
-    if (next) next.left = Math.max(0, next.t - m);
+    if (next) next.left = Math.max(0, next.t - next.m);
     return { list: list, done: done, next: next };
   }
   function leftText(min) {
@@ -152,7 +169,7 @@
           var list = [], now = Date.now();
           if (S.set.notifMilestones) {
             MILESTONES.forEach(function (m, i) {
-              var at = S.quitAt + m.t * 60000;
+              var ls = lastSlip(), at = (m.t <= 2 * D && ls ? ls.t : S.quitAt) + m.t * 60000;
               if (at > now + 5000) list.push({ id: MS_ID + i, channelId: 'raha', title: 'یک قدم دیگر برای سلامتی شما', body: MS_BODY[i], schedule: { at: new Date(at), allowWhileIdle: true }, extra: { go: 'health' } });
             });
           }
@@ -266,7 +283,9 @@
     clearTimers();
     runLeave();
     var full = route();
-    if (!S.ready && full !== 'setup') { go('setup'); return; }
+    if (API.lockView) { var lv = API.lockView(); if (lv) { $('#app').innerHTML = lv; if (API.lockAfter) API.lockAfter(); return; } }
+    if (!S.ready && !/^(setup|welcome|ftnd)$/.test(full)) { go(S.onboarded || !VIEWS.welcome ? 'setup' : 'welcome'); return; }
+    if (S.ready && full === 'welcome') { go('home'); return; }
     var parts = full.split('/'), r = parts[0], arg = parts.length > 1 ? decodeURIComponent(parts.slice(1).join('/')) : undefined;
     if (!VIEWS[r]) r = 'home';
     document.body.classList.toggle('dark', r === 'sos');
@@ -276,8 +295,7 @@
     window.scrollTo(0, 0);
     if (AFTER[r]) AFTER[r](arg);
     if (r === 'home') celebrateIfNeeded();
-    var meta = document.querySelector('meta[name=theme-color]');
-    if (meta) meta.setAttribute('content', r === 'sos' ? '#14211B' : '#F3F5F1');
+    if (API.applyTheme) API.applyTheme();
   }
 
   // ---------- صفحه‌ها ----------
@@ -355,7 +373,7 @@
       '<div class="col"><div class="stat-v" id="s-n">' + num(st.notSmoked) + '</div><div class="stat-l">نخ نکشیده</div></div>' +
       '<div class="col"><div class="stat-v" id="s-m">' + shortMoney(st.money) + '</div><div class="stat-l">' + cur() + ' پس‌انداز</div></div>' +
       '<div class="col"><div class="stat-v" id="s-l">' + lifeText(st.lifeMin) + '</div><div class="stat-l">عمر برگشته</div></div>' +
-      '</div></div>') +
+      '</div>' + (st.slipped ? '<div class="hero-slip"><span>از آخرین نخ: <b id="s-clean">' + cleanText(st.cleanMs) + '</b></span><span>' + num(st.slipped) + ' نخ در این دوره</span></div>' : '') + '</div>') +
       (!future ? '<div class="card pledge' + (pledged ? ' on' : '') + '" style="flex-direction:row;align-items:center;gap:12px">' +
         '<div class="col" style="flex:1"><div class="h2">' + (pledged ? 'تعهد امروز را دادید' : 'تعهد امروز') + '</div><div class="muted small">' + (pledged ? 'روزهای پیاپی: ' + num(streak) : 'فقط برای همین امروز: «امروز سیگار نمی‌کشم»') + '</div></div>' +
         (pledged ? '<div class="pledge-ok">✓</div>' : '<button class="chip on" data-act="pledge">متعهدم</button>') + '</div>' : '') +
@@ -381,8 +399,10 @@
       e.textContent = num(d); $('#c-h').textContent = pad(h); $('#c-m').textContent = pad(m); $('#c-s').textContent = pad(sec);
       var st = stats(); if (!$('#s-n')) return;
       $('#s-n').textContent = num(st.notSmoked); $('#s-m').textContent = shortMoney(st.money); $('#s-l').textContent = lifeText(st.lifeMin);
+      var sc = $('#s-clean'); if (sc) sc.textContent = cleanText(st.cleanMs);
     }
     upd(); tick = setInterval(upd, 1000);
+    (API.homeHooks || []).forEach(function (f) { try { f(); } catch (e) {} });
   };
 
   VIEWS.sos = function () {
@@ -403,7 +423,7 @@
       '<a class="alt" href="#thoughts">' + I.heart + 'این فکر را بررسی کن</a>' +
       '<a class="alt" href="#help">' + I.headphones + 'کمک تخصصی</a>' +
       '</div>' + (API.ifthenHtml ? API.ifthenHtml() : '') + '<a href="#instead" style="color:#C9D3CD;font-size:14px;text-decoration:underline;align-self:center;min-height:36px;display:flex;align-items:center">ایده‌های بیشتر برای جایگزین سیگار</a></div>' +
-      '<button class="primary" data-act="beat" style="background:#fff;color:var(--ink)">هوس را پشت سر گذاشتم</button>' +
+      '<button class="primary" data-act="beat" style="background:#FFFFFF;color:#14211B">هوس را پشت سر گذاشتم</button>' +
       '<button class="ghost" data-act="slip" style="color:#C9D3CD">لغزش داشتم — بدون سرزنش ثبتش کن</button>' +
       '</div>';
   };
@@ -468,7 +488,7 @@
     return '<div class="screen">' +
       '<div class="title-bar"><a class="icon-btn" href="#home" aria-label="بازگشت">' + I.back + '</a><div class="h1">داشبورد شما</div></div>' +
       '<div class="goal"><div class="row"><div style="font-size:13px">هدف پس‌انداز</div>' +
-      '<button data-act="goal" style="min-height:32px;border-radius:16px;border:none;background:#fff;color:var(--amber-ink);font-size:12px;font-weight:700;padding:0 12px">' + (goalAmt ? 'ویرایش' : 'تعیین هدف') + '</button></div>' +
+      '<button data-act="goal" style="min-height:32px;border-radius:16px;border:none;background:var(--card);color:var(--amber-ink);font-size:12px;font-weight:700;padding:0 12px">' + (goalAmt ? 'ویرایش' : 'تعیین هدف') + '</button></div>' +
       '<div style="font-size:18px;font-weight:800;color:var(--ink)">' + (S.goal.name ? esc(S.goal.name) : 'برای پولی که جمع می‌شود یک هدف بگذارید') + '</div>' +
       '<div class="row" style="justify-content:flex-start;align-items:baseline;gap:6px"><div class="amt">' + num(Math.round(cv(saved))) + '</div>' +
       '<div style="font-size:13px">' + (goalAmt ? 'از ' + num(cv(goalAmt)) + ' ' + cur() : cur()) + '</div></div>' +
@@ -571,13 +591,38 @@
 
   // ---------- داشبورد حال و هوس‌ها ----------
   var MOOD_COLORS = ['#1C7A52', '#5FC996', '#E8B04B', '#C0533A'];
+  // روزهای پاک و روزهای لغزش
+  function cleanDaysCard() {
+    if (S.quitAt > Date.now()) return '';
+    var byDay = {};
+    slipsSinceQuit().forEach(function (x) { var k = dayKey(x.t); byDay[k] = (byDay[k] || 0) + (x.n || 1); });
+    var totalDays = Math.max(1, Math.ceil((Date.now() - S.quitAt) / 86400000));
+    var slipDays = Object.keys(byDay).length;
+    var pct = Math.round((totalDays - slipDays) / totalDays * 100);
+    // طولانی‌ترین دوره‌ی پاک (روز)
+    var times = [S.quitAt].concat(slipsSinceQuit().map(function (x) { return x.t; }).sort(function (a, b) { return a - b; })).concat([Date.now()]);
+    var longest = 0; for (var i = 1; i < times.length; i++) longest = Math.max(longest, times[i] - times[i - 1]);
+    var cells = '';
+    for (var j = 13; j >= 0; j--) {
+      var t = Date.now() - j * 86400000, k = dayKey(t), before = t < S.quitAt - 86400000;
+      var n = byDay[k] || 0;
+      cells += '<div class="cd' + (before ? ' off' : n ? ' slip' : ' ok') + '">' + (n ? fa(n) : '') + '</div>';
+    }
+    return '<div class="card"><div class="row"><div class="h2">روزهای بدون سیگار</div><div class="muted small">۱۴ روز اخیر</div></div>' +
+      '<div class="cdays">' + cells + '</div>' +
+      '<div class="mlegend"><span><i style="background:var(--green)"></i>پاک</span><span><i style="background:#C0533A"></i>لغزش (عدد = تعداد نخ)</span></div>' +
+      '<div class="grid3" style="text-align:center"><div class="col"><b style="font-size:20px;color:var(--green)">' + num(pct) + '٪</b><span class="muted small">روزهای پاک</span></div>' +
+      '<div class="col"><b style="font-size:20px">' + num(Math.floor(longest / 86400000)) + '</b><span class="muted small">طولانی‌ترین دوره (روز)</span></div>' +
+      '<div class="col"><b style="font-size:20px">' + num(slipCigs()) + '</b><span class="muted small">نخ در کل این دوره</span></div></div>' +
+      (slipDays ? '<div class="muted small" style="line-height:1.9">هر لغزش فقط همان چند نخ را از آمار کم می‌کند؛ بقیه‌ی مسیرتان سر جایش است.</div>' : '') + '</div>';
+  }
   function dashboardCards() {
     // ۱) حال روزانه در ۱۴ روز گذشته
     var dots = '', logged = 0, mc = [0, 0, 0, 0];
     for (var i = 13; i >= 0; i--) {
       var k = dayKey(Date.now() - i * 86400000), m = S.moods[k];
       if (typeof m === 'number') { logged++; mc[m]++; }
-      dots += '<div class="mdot" title="" style="background:' + (typeof m === 'number' ? MOOD_COLORS[m] : '#E2E7E3') + '"></div>';
+      dots += '<div class="mdot" title="" style="background:' + (typeof m === 'number' ? MOOD_COLORS[m] : 'var(--line)') + '"></div>';
     }
     var topMood = logged ? mc.indexOf(Math.max.apply(null, mc)) : -1;
     var moodCard = '<div class="card"><div class="row"><div class="h2">حال شما در ۱۴ روز گذشته</div><div class="muted small">' + num(logged) + ' روز ثبت شده</div></div>' +
@@ -618,9 +663,9 @@
       '<div style="line-height:2;font-size:14px">' + TRIGGERS[top][1] + '</div></div>' : '';
 
     // ۵) خلاصه
-    var slipsN = (S.slips || []).length;
+    var slipsN = slipCigs();
     var sum = '<div class="grid3"><div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v" style="color:var(--green)">' + num(S.cravings.length) + '</div><div class="muted small">هوس شکست‌خورده</div></div>' +
-      '<div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v">' + num(slipsN) + '</div><div class="muted small">لغزش</div></div>' +
+      '<div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v">' + num(slipsN) + '</div><div class="muted small">نخ لغزش</div></div>' +
       '<div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v">' + num(logged) + '</div><div class="muted small">ثبت حال</div></div></div>';
     // چه چیزی بیشتر کمک کرده است
     var HL = API.HELPS || [], hc = HL.map(function () { return 0; }), hAny = 0;
@@ -631,7 +676,7 @@
       helpCard = '<div class="card"><div class="h2">چه چیزی بیشتر کمک کرده؟</div>' + ho.map(function (x) { return '<div class="hrow"><div class="hl">' + HL[x[1]] + '</div><div class="hbar"><div style="width:' + Math.max(6, x[0] / hm * 100) + '%;background:var(--mint)"></div></div><div class="hn">' + num(x[0]) + '</div></div>'; }).join('') + '</div>';
     }
     var histLink = S.cravings.length ? '<a class="chip" href="#cravings" style="display:flex;align-items:center;justify-content:center">تاریخچه‌ی کامل هوس‌ها</a>' : '';
-    return sum + moodCard + trigCard + timeCard + helpCard + tip + histLink;
+    return sum + cleanDaysCard() + moodCard + trigCard + timeCard + helpCard + tip + histLink;
   }
 
   // ---------- ویجت صفحه‌ی اصلی گوشی ----------
@@ -645,7 +690,7 @@
       try { W = window.Capacitor && (window.Capacitor.Plugins.RahaWidget || (window.Capacitor.registerPlugin && window.Capacitor.registerPlugin('RahaWidget'))); } catch (e) {}
       if (!W || !IS_NATIVE) return;
       var data = {
-        ready: !!S.ready, quitAt: S.quitAt, cpd: S.cpd, costPerCig: costPerCig(),
+        ready: !!S.ready, quitAt: S.quitAt, cpd: S.cpd, costPerCig: costPerCig(), slipCigs: slipCigs(),
         rial: S.set.currency === 'rial',
         milestones: MILESTONES.map(function (m) { return { t: m.t, title: m.title }; })
       };
@@ -726,6 +771,9 @@
   function sw(key, on) {
     return '<button class="switch' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" data-toggle="' + key + '"><span></span></button>';
   }
+  function sw2(key, on) {
+    return '<button class="switch' + (on ? ' on' : '') + '" role="switch" aria-checked="' + !!on + '" data-sw2="' + key + '"><span></span></button>';
+  }
   function setRow(title, sub, right) {
     return '<div class="srow"><div class="col" style="flex:1"><div class="st">' + title + '</div>' + (sub ? '<div class="muted small" style="line-height:1.7">' + sub + '</div>' : '') + '</div>' + right + '</div>';
   }
@@ -750,12 +798,14 @@
       '<div class="sec">عمومی</div><div class="card sgroup">' +
       setRow('واحد پول', '', '<div class="seg"><button class="' + (st.currency === 'toman' ? 'on' : '') + '" data-cur="toman">تومان</button><button class="' + (st.currency === 'rial' ? 'on' : '') + '" data-cur="rial">ریال</button></div>') +
       setRow('لرزش در تمرین تنفس', '', sw('vibrate', st.vibrate)) +
+      (API.settingsTheme ? API.settingsTheme() : '') +
       '</div>' +
+      (API.settingsExtra ? API.settingsExtra() : '') +
 
       '<div class="sec">به‌روزرسانی</div><div class="card sgroup">' +
       setRow('نسخه‌ی فعلی', '', '<div class="muted" id="ver">' + (APP_VERSION.code ? fa(APP_VERSION.name) : APP_VERSION.name) + '</div>') +
-      (APP_VERSION.store === 'bazaar'
-        ? '<div class="srow"><div class="muted small" style="flex:1;line-height:1.9">نسخه‌های تازه از طریق کافه‌بازار می‌رسند.</div><button class="chip on" data-url="bazaar://details?id=com.rha.quitsmoking">کافه‌بازار</button></div>'
+      (APP_VERSION.store
+        ? '<div class="srow"><div class="muted small" style="flex:1;line-height:1.9">نسخه‌های تازه از طریق ' + (APP_VERSION.store === 'myket' ? 'مایکت' : 'کافه‌بازار') + ' می‌رسند.</div><button class="chip on" data-url="' + (APP_VERSION.store === 'myket' ? 'myket' : 'bazaar') + '://details?id=com.rha.quitsmoking">' + (APP_VERSION.store === 'myket' ? 'مایکت' : 'کافه‌بازار') + '</button></div>'
         : setRow('بررسی خودکار', 'روزی یک بار هنگام باز کردن اپ', sw('autoUpdate', st.autoUpdate)) +
           '<div class="srow"><button class="primary" data-act="update" style="min-height:48px;font-size:15px">بررسی به‌روزرسانی</button></div>') +
       '</div>' +
@@ -776,6 +826,7 @@
       '</div>' + nav('settings');
   };
   AFTER.settings = function () {
+    if (API.AFTER_SETTINGS) API.AFTER_SETTINGS();
     var t = $('#daily-time');
     if (t) t.addEventListener('change', function () { if (t.value) { S.set.dailyTime = t.value; save(); reschedule(false); toast('ساعت یادآور ذخیره شد'); } });
     var box = $('#perm-box');
@@ -858,6 +909,53 @@
     if ((v = intOf('f-pouch', 0)) !== null) draft.pouchPrice = v;
     if ((v = intOf('f-perpouch', 40)) !== null) draft.perPouch = Math.max(1, v);
     if ((v = intOf('f-extra', 0)) !== null) draft.rollExtra = v;
+  }
+
+  // ---------- ثبت لغزش ----------
+  // لغزش شمارنده را صفر نمی‌کند؛ فقط همان تعداد نخ از آمار کم می‌شود
+  function slipSheet() {
+    var n = 1, when = 'now', g = -1;
+    var hh = new Date(); var tv = ('0' + hh.getHours()).slice(-2) + ':' + ('0' + hh.getMinutes()).slice(-2);
+    sheet('<div class="h2">اشکالی ندارد؛ ثبتش کنیم و ادامه بدهیم</div>' +
+      '<div class="muted small" style="line-height:1.9">یک یا چند نخ، مسیرتان را خراب نمی‌کند. شمارنده‌ی ترک ادامه پیدا می‌کند و فقط همین تعداد نخ از آمارتان کم می‌شود.</div>' +
+      '<div class="row"><div class="st">چند نخ کشیدید؟</div><div class="stepper"><button data-sn="1" aria-label="بیشتر">+</button><div class="v" id="sl-n">۱</div><button data-sn="-1" aria-label="کمتر">−</button></div></div>' +
+      '<div class="st">کِی؟</div><div class="seg" id="sl-w"><button style="flex:1" data-sw="now" class="on">همین الان</button><button style="flex:1" data-sw="today">امروز، ساعت…</button><button style="flex:1" data-sw="yday">دیروز</button></div>' +
+      '<input type="time" class="input" id="sl-time" value="' + tv + '" style="direction:ltr;display:none">' +
+      '<div class="st">چه شد؟</div><div class="chips">' + TRIGGERS.map(function (x, j) { return '<button class="chip" data-sg="' + j + '">' + x[0] + '</button>'; }).join('') + '</div>' +
+      '<textarea class="input" id="sl-note" rows="2" maxlength="500" placeholder="یادداشت (اختیاری)" style="padding:10px 14px;min-height:60px;resize:none"></textarea>' +
+      '<button class="primary" id="sl-save">ثبت و ادامه‌ی مسیر</button>' +
+      '<button class="ghost" id="sl-reset" style="font-size:13px">می‌خواهم شمارنده را از صفر شروع کنم</button>', function (bg) {
+      bg.querySelectorAll('[data-sn]').forEach(function (b) { b.onclick = function () { n = Math.max(1, Math.min(60, n + +b.getAttribute('data-sn'))); bg.querySelector('#sl-n').textContent = num(n); }; });
+      bg.querySelectorAll('[data-sw]').forEach(function (b) { b.onclick = function () { when = b.getAttribute('data-sw'); bg.querySelectorAll('[data-sw]').forEach(function (x) { x.classList.toggle('on', x === b); }); bg.querySelector('#sl-time').style.display = when === 'now' ? 'none' : ''; }; });
+      bg.querySelectorAll('[data-sg]').forEach(function (b) { b.onclick = function () { g = g === +b.getAttribute('data-sg') ? -1 : +b.getAttribute('data-sg'); bg.querySelectorAll('[data-sg]').forEach(function (x) { x.classList.toggle('on', +x.getAttribute('data-sg') === g); }); }; });
+      function when2t() {
+        if (when === 'now') return Date.now();
+        var p = (bg.querySelector('#sl-time').value || '12:00').split(':'), d = new Date();
+        if (when === 'yday') d = new Date(Date.now() - 86400000);
+        d.setHours(+p[0], +p[1], 0, 0);
+        return Math.min(Date.now(), d.getTime());
+      }
+      bg.querySelector('#sl-save').onclick = function () {
+        var t = when2t();
+        if (t < S.quitAt) { toast('این زمان قبل از روز ترک است'); return; }
+        S.slips.push({ t: t, n: n, g: g, note: bg.querySelector('#sl-note').value.trim().slice(0, 500) });
+        save(); reschedule(false); syncWidget(); slipCheckins(); bg.remove();
+        var st = stats();
+        if (route() !== 'home') go('home'); else render();
+        setTimeout(function () { sheet('<div class="wl-art" style="font-size:44px;margin:0">💚</div><div class="h2" style="text-align:center">ثبت شد. مسیرتان ادامه دارد</div>' +
+          '<div class="card" style="background:var(--green-tint);gap:6px;text-align:center"><div><b style="font-size:22px;color:var(--green-dark)">' + num(Math.floor(st.days)) + '</b> روز ترک</div><div><b style="font-size:22px;color:var(--green-dark)">' + num(st.notSmoked) + '</b> نخ نکشیده</div></div>' +
+          '<div class="muted" style="line-height:2;text-align:center">این لغزش ' + num(n) + ' نخ از آمارتان کم کرد، نه همه‌ی آن را. مراحل کوتاه‌مدت سلامتی از همین الان دوباره شمرده می‌شوند.</div>' +
+          (g >= 0 ? '<a class="chip on" href="#ifthen" style="display:flex;align-items:center;justify-content:center;min-height:48px">برای «' + TRIGGERS[g][0] + '» یک برنامه‌ی اگر-آنگاه بنویسیم</a>' : '') +
+          '<button class="primary" data-close>ادامه</button>'); }, 150);
+      };
+      bg.querySelector('#sl-reset').onclick = function () {
+        bg.remove();
+        sheet('<div class="h2">شمارنده از صفر شروع شود؟</div><div class="muted" style="line-height:2">روز ترک به همین الان منتقل می‌شود و روزها، پس‌انداز و نخ‌های نکشیده از صفر شمرده می‌شوند. اگر فقط چند نخ کشیده‌اید، لازم نیست؛ ثبت لغزش کافی است.</div>' +
+          '<button class="primary" id="rs-go" style="background:var(--night)">بله، از صفر</button><button class="ghost" data-close>نه، برگرد</button>', function (bg2) {
+          bg2.querySelector('#rs-go').onclick = function () { S.slips.push({ t: Date.now(), n: n, g: g, reset: true }); S.quitAt = Date.now(); S.seenMs = -1; save(); reschedule(false); syncWidget(); slipCheckins(); bg2.remove(); go('home'); render(); };
+        });
+      };
+    });
   }
 
   // ---------- برگه‌ی پایین (sheet) ----------
@@ -983,13 +1081,7 @@
           };
         });
         return;
-      case 'slip':
-        sheet('<div class="h2">اشکالی ندارد، ادامه بده</div><div class="muted" style="line-height:1.9">یک لغزش به معنای شکست نیست. می‌خواهید شمارنده از همین الان دوباره شروع شود، یا فقط ثبت شود و شمارنده ادامه پیدا کند؟</div>' +
-          '<button class="primary" id="slip-log">فقط ثبت کن</button><button class="primary" id="slip-reset" style="background:var(--ink)">شمارنده از نو</button><button class="ghost" data-close>انصراف</button>', function (bg) {
-          bg.querySelector('#slip-log').onclick = function () { S.slips.push(Date.now()); save(); slipCheckins(); bg.remove(); go('home'); };
-          bg.querySelector('#slip-reset').onclick = function () { S.slips.push(Date.now()); S.quitAt = Date.now(); S.seenMs = -1; save(); reschedule(false); syncWidget(); slipCheckins(); bg.remove(); go('home'); };
-        });
-        return;
+      case 'slip': slipSheet(); return;
       case 'reasons':
         sheet('<div class="h2">دلیل‌های شما برای ترک</div><div class="chips">' +
           (S.reasons.length ? S.reasons.map(function (r) { return '<span class="chip on" style="display:inline-flex;align-items:center">' + REASONS[r] + '</span>'; }).join('') : '<div class="muted">هنوز دلیلی انتخاب نکرده‌اید. از «برنامه من» اضافه کنید.</div>') +
@@ -1057,9 +1149,14 @@
     go: go, route: route, render: render, nav: nav, I: I, VIEWS: VIEWS, AFTER: AFTER,
     onLeave: function (f) { leaveHooks.push(f); },
     TRIGGERS: TRIGGERS, MILESTONES: MILESTONES, dayKey: dayKey, stats: stats, plugin: plugin, IS_NATIVE: IS_NATIVE,
-    MOODS: MOODS, MOOD_COLORS: MOOD_COLORS,
+    MOODS: MOODS, MOOD_COLORS: MOOD_COLORS, KEY: KEY, setRow: setRow, sw: sw, sw2: sw2,
+    APP_VERSION: function () { return APP_VERSION; }, costPerCig: costPerCig, milestoneState: milestoneState,
+    reschedule: reschedule, notifPermission: notifPermission, ensureChannel: ensureChannel, LN: LN, syncWidget: syncWidget,
+    slipsSinceQuit: slipsSinceQuit, slipCigs: slipCigs, lastSlip: lastSlip, cleanText: cleanText, slipSheet: slipSheet,
+    cv: cv, faDate: faDate, minText: minText, lifeText: lifeText, TABS: TABS,
     shortMoney: shortMoney, cur: cur, copy: function (t) { try { navigator.clipboard.writeText(t).then(function () { toast('کپی شد'); }); } catch (e) {} }
   };
+  if (window.RAHA_MORE) { try { window.RAHA_MORE(API); } catch (e) { console.error(e); } }
   if (window.RAHA_EXTRAS) { try { window.RAHA_EXTRAS(API); } catch (e) { console.error(e); } }
   if (window.RAHA_TOGETHER) { try { window.RAHA_TOGETHER(API); } catch (e) { console.error(e); } }
   if (window.RAHA_LIB) { try { window.RAHA_LIB(API); } catch (e) { console.error(e); } }
@@ -1070,6 +1167,6 @@
   // کارهای هنگام باز شدن اپ
   if (S.ready) { reschedule(false); syncWidget(); }
   if (IS_NATIVE && S.ready && S.set.autoUpdate && (!S.lastUpdateCheck || Date.now() - S.lastUpdateCheck > 86400000)) {
-    setTimeout(function () { if (APP_VERSION.store !== 'bazaar') checkUpdate(true); }, 3000);
+    setTimeout(function () { if (!APP_VERSION.store) checkUpdate(true); }, 3000);
   }
 })();

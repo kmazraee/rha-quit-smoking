@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(RahaWidgetPlugin.class);
         registerPlugin(RahaFriendsPlugin.class);
+        registerPlugin(RahaAppPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

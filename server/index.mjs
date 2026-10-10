@@ -56,6 +56,15 @@ db.exec(`
     at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS events_to ON events (to_user, id);
+  CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    contact TEXT,
+    version TEXT,
+    store TEXT,
+    days INTEGER,
+    at INTEGER NOT NULL
+  );
 `);
 
 const q = {
@@ -81,6 +90,8 @@ const q = {
   inboxSince: db.prepare('SELECT * FROM events WHERE to_user = ? AND id > ? ORDER BY id LIMIT 50'),
   inboxLatest: db.prepare('SELECT * FROM (SELECT * FROM events WHERE to_user = ? ORDER BY id DESC LIMIT 30) ORDER BY id'),
   pruneEvents: db.prepare('DELETE FROM events WHERE at < ?'),
+  insertFeedback: db.prepare('INSERT INTO feedback (text, contact, version, store, days, at) VALUES (?, ?, ?, ?, ?, ?)'),
+  listFeedback: db.prepare('SELECT * FROM feedback ORDER BY id DESC LIMIT 200'),
 };
 
 // ---------- ابزارها ----------
@@ -337,6 +348,25 @@ const routes = {
     if (limited('cheer:' + u.id, 40, 3600_000) || limited(`cheer:${u.id}:${to}`, 1, 20_000)) fail(429, 'کمی صبر کنید و دوباره بفرستید');
     addEvent(to, u, 'cheer', `پیام از ${u.name}`, CHEERS[kind]);
     return { ok: true };
+  },
+
+  // نظر و پیشنهاد کاربران (بدون نیاز به ورود)
+  'POST /api/feedback': async (req) => {
+    if (limited('fb:' + clientIp(req), 5, 3600_000)) fail(429, 'کمی بعد دوباره امتحان کنید');
+    const body = await readBody(req);
+    const clip = (v, n) => String(v || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, n);
+    const text = clip(body.text, 2000);
+    if (text.length < 3) fail(400, 'متن نظر خالی است');
+    q.insertFeedback.run(text, clip(body.contact, 80) || null, clip(body.version, 20) || null, clip(body.store, 12) || null, int(body.days, 0, 100000), Date.now());
+    return { ok: true };
+  },
+
+  // خواندن نظرها برای سازنده‌ی اپ (رمز در متغیر محیطی ADMIN_TOKEN)
+  'GET /api/admin/feedback': (req) => {
+    const t = String(req.headers['x-admin-token'] || '');
+    const want = process.env.ADMIN_TOKEN || '';
+    if (!want || t.length !== want.length || !crypto.timingSafeEqual(Buffer.from(t), Buffer.from(want))) fail(401, 'دسترسی ندارید');
+    return { feedback: q.listFeedback.all() };
   },
 
   // صندوق پیام‌ها: رویدادهای تازه‌تر از شماره‌ی since

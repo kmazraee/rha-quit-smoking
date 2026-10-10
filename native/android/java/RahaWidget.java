@@ -70,7 +70,7 @@ public class RahaWidget extends AppWidgetProvider {
             double days = elapsed / 86400000.0;
             long fullDays = (long) Math.floor(days);
             long hours = (elapsed / 3600000L) % 24;
-            long notSmoked = (long) Math.floor(days * cpd);
+            long notSmoked = Math.max(0L, (long) Math.floor(days * cpd) - d.optLong("slipCigs", 0L));
             double money = notSmoked * cost * (rial ? 10 : 1);
 
             v.setTextViewText(R.id.rw_days, fa(fullDays));
