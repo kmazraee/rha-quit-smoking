@@ -386,3 +386,38 @@ html[data-theme="dark"] .tag-slip{background:#3A1D18 !important;color:#F4AB9B !i
 .letter-text{white-space:pre-wrap;line-height:2.2;font-size:15px;background:var(--amber-tint);color:var(--ink);padding:16px;border-radius:16px;max-height:55vh;overflow-y:auto}
 .letter-sealed{align-items:center;text-align:center}
 .letter-sealed .env{font-size:54px;line-height:1.2}
+
+/* ---------- سلامت من، ذهن‌آگاهی، تقویم، امتیاز، آرزوها ---------- */
+.sym-row{display:flex;flex-direction:column;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}
+.sym-row:last-child{border-bottom:none}
+.sym-name{font-size:14px;font-weight:700}
+.sym-seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.sym-seg button{min-height:38px;border-radius:12px;border:1.5px solid var(--line2);background:var(--input);font-size:13px}
+.sym-seg button.on.l0{background:var(--green-tint);border-color:var(--green);color:var(--green-dark);font-weight:700}
+.sym-seg button.on.l1{background:#FFF6DC;border-color:#E8B04B;color:#6B4A12;font-weight:700}
+.sym-seg button.on.l2{background:#FBE3CF;border-color:#D9822B;color:#7A3E0C;font-weight:700}
+.sym-seg button.on.l3{background:var(--red-tint);border-color:#C0533A;color:var(--red-ink);font-weight:700}
+.mind-ic{width:46px;height:46px;border-radius:50%;background:var(--green-tint);color:var(--green);display:flex;align-items:center;justify-content:center;flex:none}
+.mind-play{gap:22px}
+.mind-circle{width:150px;height:150px;border-radius:50%;align-self:center;margin:24px 0;background:radial-gradient(circle,var(--mint) 0,var(--green) 70%);opacity:.9;transition-property:transform;transition-timing-function:ease-in-out;transform:scale(.8)}
+.mind-circle.in{transform:scale(1.25)}.mind-circle.hold{transform:scale(1.25)}.mind-circle.out{transform:scale(.75)}.mind-circle.hold2{transform:scale(.75)}
+.mind-text{font-size:20px;font-weight:700;line-height:1.9;text-align:center;min-height:120px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-head div{text-align:center;font-size:12px;color:var(--muted);font-weight:700}
+.cal-d{position:relative;aspect-ratio:1;border-radius:12px;border:none;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;background:var(--input);color:var(--ink)}
+.cal-d.ok{background:var(--green);color:#FFFFFF}
+.cal-d.slip{background:#C0533A;color:#FFFFFF}
+.cal-d.off{opacity:.45}
+.cal-d.fut{background:transparent;color:var(--muted)}
+.cal-d.today{outline:2.5px solid var(--amber);outline-offset:1px}
+.cal-d i{position:absolute;top:2px;left:4px;font-size:10px;font-style:normal}
+.cal-d b{position:absolute;bottom:4px;width:6px;height:6px;border-radius:50%;border:1px solid #FFFFFF}
+.cal-d em{position:absolute;top:1px;right:3px;font-size:10px;font-style:normal;color:#E8B04B}
+.lvl-hero{display:flex;align-items:center;gap:16px;padding:20px;border-radius:24px;background:linear-gradient(135deg,#1C7A52,#0F4F35);color:#FFFFFF}
+.lvl-badge{width:64px;height:64px;border-radius:50%;background:#E8B04B;color:#14211B;font-size:28px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 0 0 4px rgba(255,255,255,.25)}
+.lvl-badge.sm{width:42px;height:42px;font-size:18px;box-shadow:none}
+.lvl-mini{flex-direction:row;align-items:center;gap:12px}
+.ch-row{display:flex;align-items:center;gap:12px;padding:6px 0}
+.ch-ic{width:46px;height:46px;border-radius:14px;background:var(--input);border:1.5px solid var(--line2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex:none}
+.ch-row.done .ch-ic{background:var(--green);border-color:var(--green);color:#FFFFFF;font-size:20px}
+.wish.bought{opacity:.7}

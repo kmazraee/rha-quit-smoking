@@ -479,6 +479,7 @@
       '<button class="alt" data-act="walk">' + I.walk + 'یک قدم‌زدن کوتاه</button>' +
       (API.togetherSosButton ? API.togetherSosButton() : '') +
       (API.heartSosButtons ? API.heartSosButtons() : '') +
+      (API.careSosButtons ? API.careSosButtons() : '') +
       '<a class="alt" href="#game">' + I.breath + 'بازی یک‌دقیقه‌ای</a>' +
       '<button class="alt" data-act="card">' + I.spark + 'کارت انگیزشی</button>' +
       '<a class="alt" href="#thoughts">' + I.heart + 'این فکر را بررسی کن</a>' +
@@ -913,6 +914,7 @@
       setRow('اعلان مراحل سلامتی', 'هر بار که بدنتان یک مرحله از بهبود را پشت سر بگذارد خبرتان می‌کنیم', sw('notifMilestones', st.notifMilestones)) +
       setRow('یادآور روزانه', 'یک پیام کوتاه برای ثبت حال و ادامه‌ی مسیر', sw('daily', st.daily)) +
       (st.daily ? setRow('ساعت یادآور', '', '<input type="time" class="input" id="daily-time" value="' + esc(st.dailyTime) + '" style="width:150px;direction:ltr;min-height:42px;padding:0 10px" aria-label="ساعت یادآور">') : '') +
+      (API.settingsNotifExtra ? API.settingsNotifExtra() : '') +
       '<div class="srow"><button class="chip" data-act="test-notif" style="width:100%">ارسال یک اعلان آزمایشی</button></div>' +
       '</div>' +
 
@@ -1335,6 +1337,7 @@
   if (window.RAHA_LIB) { try { window.RAHA_LIB(API); } catch (e) { console.error(e); } }
   if (window.RAHA_STATS) { try { window.RAHA_STATS(API); } catch (e) { console.error(e); } }
   if (window.RAHA_HEART) { try { window.RAHA_HEART(API); } catch (e) { console.error(e); } }
+  if (window.RAHA_CARE) { try { window.RAHA_CARE(API); } catch (e) { console.error(e); } }
 
   render();
 

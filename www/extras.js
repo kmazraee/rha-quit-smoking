@@ -317,6 +317,7 @@ window.RAHA_EXTRAS = function (A) {
   // ۸) ثبت جایگزین نیکوتین (چسب، آدامس، قرص مکیدنی …)
   // ======================================================================
   var NRT = ['چسب نیکوتین', 'آدامس نیکوتین', 'قرص مکیدنی نیکوتین', 'اسپری یا استنشاقی', 'داروی تجویزی'];
+  A.NRT = NRT;
   V.nrt = function () {
     var today = A.dayKey(Date.now());
     var todayList = S.nrt.filter(function (x) { return A.dayKey(x.t) === today; });
