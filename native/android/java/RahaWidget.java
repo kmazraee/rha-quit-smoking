@@ -7,7 +7,12 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.view.View;
 import android.widget.RemoteViews;
+
+import java.io.File;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -22,6 +27,7 @@ public class RahaWidget extends AppWidgetProvider {
 
     static final String PREFS = "raha_widget";
     static final String KEY = "data";
+    static final String PHOTO = "widget_photo.jpg";
     private static final String FA = "۰۱۲۳۴۵۶۷۸۹";
 
     @Override
@@ -54,6 +60,20 @@ public class RahaWidget extends AppWidgetProvider {
             v.setOnClickPendingIntent(R.id.rw_root, pi);
         }
 
+        // عکس انگیزشی (اختیاری) کنار اعداد
+        try {
+            File f = new File(context.getFilesDir(), PHOTO);
+            Bitmap bmp = f.exists() ? BitmapFactory.decodeFile(f.getAbsolutePath()) : null;
+            if (bmp != null) {
+                v.setImageViewBitmap(R.id.rw_photo, bmp);
+                v.setViewVisibility(R.id.rw_photo, View.VISIBLE);
+            } else {
+                v.setViewVisibility(R.id.rw_photo, View.GONE);
+            }
+        } catch (Exception e) {
+            v.setViewVisibility(R.id.rw_photo, View.GONE);
+        }
+
         SharedPreferences sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String json = sp.getString(KEY, null);
         try {
@@ -66,30 +86,42 @@ public class RahaWidget extends AppWidgetProvider {
             double cost = d.optDouble("costPerCig", 0);
             boolean rial = d.optBoolean("rial", false);
 
-            long elapsed = Math.max(0, System.currentTimeMillis() - quitAt);
+            long now = System.currentTimeMillis();
+            long elapsed = Math.max(0, now - quitAt);
             double days = elapsed / 86400000.0;
             long fullDays = (long) Math.floor(days);
             long hours = (elapsed / 3600000L) % 24;
             long notSmoked = Math.max(0L, (long) Math.floor(days * cpd) - d.optLong("slipCigs", 0L));
-            double money = notSmoked * cost * (rial ? 10 : 1);
+            double money;
+            if (d.has("moneyBase")) {
+                // پول تا لحظه‌ی آخرین همگام‌سازی (با تاریخچه‌ی قیمت) + نرخ روزانه با قیمت امروز
+                long from = Math.max(d.optLong("moneyAt", now), quitAt);
+                money = (d.optDouble("moneyBase", 0) + d.optDouble("moneyRate", 0) * Math.max(0L, now - from)) * (rial ? 10 : 1);
+            } else {
+                money = notSmoked * cost * (rial ? 10 : 1);
+            }
+            String unit = d.optString("unit", "نخ نکشیده");
 
             v.setTextViewText(R.id.rw_days, fa(fullDays));
             v.setTextViewText(R.id.rw_days_label, "روز" + (hours > 0 ? " و " + fa(hours) + " ساعت" : ""));
             v.setTextViewText(R.id.rw_money, shortMoney(money) + " " + (rial ? "ریال" : "تومان"));
-            v.setTextViewText(R.id.rw_cigs, fa(group(notSmoked)) + " نخ نکشیده");
+            v.setTextViewText(R.id.rw_cigs, fa(group(notSmoked)) + " " + unit);
 
             // مرحله‌ی بعدی سلامتی
             JSONArray ms = d.optJSONArray("milestones");
             double minutes = elapsed / 60000.0;
+            // مراحل تا ۲ روز از آخرین نخ (لغزش) شمرده می‌شوند
+            double minutesClean = Math.max(0, now - Math.max(quitAt, d.optLong("lastSlipAt", 0L))) / 60000.0;
             String nextTitle = "همه‌ی مراحل سلامتی کامل شد";
             int pct = 100;
             if (ms != null) {
                 for (int i = 0; i < ms.length(); i++) {
                     JSONObject m = ms.getJSONObject(i);
                     double t = m.getDouble("t");
-                    if (minutes < t) {
+                    double mm = t <= 2880 ? minutesClean : minutes;
+                    if (mm < t) {
                         nextTitle = m.optString("title", "");
-                        pct = (int) Math.floor(minutes / t * 100);
+                        pct = (int) Math.floor(mm / t * 100);
                         break;
                     }
                 }

@@ -72,7 +72,7 @@ if (!manifest.includes('.RahaFriendsJob"')) {
     </application>`);
   console.log('manifest: friends job service added');
 }
-for (const perm of ['android.permission.USE_BIOMETRIC']) {
+for (const perm of ['android.permission.USE_BIOMETRIC', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS']) {
   if (!manifest.includes(perm)) manifest = manifest.replace('</manifest>', `    <uses-permission android:name="${perm}" />\n</manifest>`);
 }
 if (!manifest.includes('android.permission.RECEIVE_BOOT_COMPLETED')) {

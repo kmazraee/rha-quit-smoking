@@ -21,6 +21,12 @@
   // لغزش‌های قدیمی فقط زمان بودند؛ حالا {t: زمان، n: تعداد نخ، g: موقعیت، note}
   S.slips = S.slips.map(function (x) { return typeof x === 'number' ? { t: x, n: 1, g: -1 } : x; });
   if (typeof S.seenMs !== 'number') S.seenMs = -1; // تعداد مراحلی که جشنشان نمایش داده شده (-۱ یعنی هنوز مقداردهی نشده)
+  // چه چیزی ترک می‌شود: cig = سیگار، hookah = قلیان، both = هر دو
+  if (!S.product) S.product = 'cig';
+  if (typeof S.hkWeek !== 'number') S.hkWeek = 3;   // وعده‌ی قلیان در هفته
+  if (typeof S.hkPrice !== 'number') S.hkPrice = 0; // هزینه‌ی هر وعده (تومان)
+  // تاریخچه‌ی قیمت: [{t: از این لحظه، c: هزینه‌ی هر نخ، h: هزینه‌ی هر وعده قلیان}]؛ t=0 یعنی از همان اول
+  if (!Array.isArray(S.prices) || !S.prices.length) S.prices = S.ready ? [{ t: 0, c: costPerCig(), h: S.hkPrice }] : [];
 
   // ---------- افزونه‌های بومی (فقط داخل اپ اندروید وجود دارند) ----------
   function plugin(name) { try { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[name]; } catch (e) { return null; } }
@@ -65,6 +71,12 @@
     if (t === 'roll') return (o.perPouch > 0 ? (o.pouchPrice || 0) / o.perPouch : 0) + (o.rollExtra || 0);
     return o.perPack > 0 ? (o.packPrice || 0) / o.perPack : 0;
   }
+  function planSummary() {
+    var a = [];
+    if (useCig()) a.push('روزی ' + num(S.cpd) + ' نخ · ' + buySummary());
+    if (useHk()) a.push('هفته‌ای ' + num(S.hkWeek) + ' وعده قلیان · هر وعده ' + shortMoney(S.hkPrice) + ' ' + cur());
+    return a.join(' — ');
+  }
   function buySummary() {
     var t = S.buyType || 'pack';
     if (t === 'single') return 'هر نخ ' + shortMoney(S.singlePrice) + ' ' + cur();
@@ -73,8 +85,35 @@
   }
   function elapsedMs() { return Math.max(0, Date.now() - S.quitAt); }
   // لغزش‌ها از لحظه‌ی ترک به بعد
+  var HK_MIN = 60; // هر وعده‌ی قلیان معمولاً حدود یک ساعت طول می‌کشد (CDC)
+  function useCig() { return S.product !== 'hookah'; }
+  function useHk() { return S.product === 'hookah' || S.product === 'both'; }
+  function cpdEff() { return useCig() ? S.cpd : 0; }
+  function hkPerDay() { return useHk() ? (S.hkWeek || 0) / 7 : 0; }
   function slipsSinceQuit() { return S.slips.filter(function (x) { return x.t >= S.quitAt && x.t <= Date.now(); }); }
-  function slipCigs() { return slipsSinceQuit().reduce(function (a, x) { return a + (x.n || 1); }, 0); }
+  // لغزش سیگار (k خالی) و لغزش قلیان (k = 'h') جدا شمرده می‌شوند
+  function slipCigs() { return slipsSinceQuit().reduce(function (a, x) { return a + (x.k === 'h' ? 0 : (x.n || 1)); }, 0); }
+  function slipHk() { return slipsSinceQuit().reduce(function (a, x) { return a + (x.k === 'h' ? (x.n || 1) : 0); }, 0); }
+  // قیمتی که در یک لحظه‌ی مشخص برقرار بوده
+  function priceAt(t) {
+    var p = S.prices[0] || { c: costPerCig(), h: S.hkPrice || 0 };
+    for (var i = 1; i < S.prices.length; i++) if (S.prices[i].t <= t) p = S.prices[i];
+    return p;
+  }
+  // هزینه‌ی روزانه‌ی مصرف قبلی با قیمت یک لحظه‌ی مشخص (پیش‌فرض: امروز)
+  function dailyCost(t) { var p = priceAt(t || Date.now()); return cpdEff() * p.c + hkPerDay() * p.h; }
+  // پول پس‌انداز‌شده: هر دوره با قیمت همان دوره حساب می‌شود، و هر لغزش با قیمت روز خودش کم می‌شود
+  function moneySaved(now) {
+    now = now || Date.now();
+    if (now <= S.quitAt) return 0;
+    var cuts = [S.quitAt];
+    S.prices.forEach(function (p) { if (p.t > S.quitAt && p.t < now) cuts.push(p.t); });
+    cuts.push(now);
+    var m = 0;
+    for (var i = 0; i < cuts.length - 1; i++) m += (cuts[i + 1] - cuts[i]) / 86400000 * dailyCost(cuts[i]);
+    slipsSinceQuit().forEach(function (x) { var p = priceAt(x.t); m -= (x.n || 1) * (x.k === 'h' ? p.h : p.c); });
+    return Math.max(0, m);
+  }
   function lastSlip() { var l = slipsSinceQuit(); return l.length ? l.reduce(function (a, x) { return x.t > a.t ? x : a; }) : null; }
   // زمان از آخرین نخ (برای مراحل کوتاه‌مدت سلامتی)
   function cleanMs() { var l = lastSlip(); return Math.max(0, Date.now() - (l ? l.t : S.quitAt)); }
@@ -82,10 +121,24 @@
     var ms = elapsedMs();
     var days = ms / 86400000;
     var slipped = slipCigs();
-    var notSmoked = Math.max(0, Math.floor(days * S.cpd) - slipped);
-    var money = notSmoked * costPerCig();
+    var notSmoked = Math.max(0, Math.floor(days * cpdEff()) - slipped);
+    var slippedHk = slipHk();
+    var hk = Math.max(0, Math.floor(days * hkPerDay()) - slippedHk);
+    var money = moneySaved();
     var lifeMin = notSmoked * 11; // برآورد رایج: حدود ۱۱ دقیقه برای هر نخ
-    return { ms: ms, days: days, notSmoked: notSmoked, money: money, lifeMin: lifeMin, slipped: slipped, cleanMs: cleanMs() };
+    var freeMin = notSmoked * 6 + hk * HK_MIN;
+    return { ms: ms, days: days, notSmoked: notSmoked, money: money, lifeMin: lifeMin, slipped: slipped, slippedHk: slippedHk, hk: hk, freeMin: freeMin, cleanMs: cleanMs() };
+  }
+  // سه عدد اصلی کارت بالای خانه، بسته به اینکه سیگار ترک شده یا قلیان
+  function heroVals(st) {
+    if (!useCig()) return [num(st.hk), 'وعده قلیان نکشیده', lifeText(st.freeMin), 'وقت آزادشده'];
+    return [num(st.notSmoked), 'نخ نکشیده', lifeText(st.lifeMin), 'عمر برگشته'];
+  }
+  function slipAmountText(c, h) {
+    var a = [];
+    if (c) a.push(num(c) + ' نخ');
+    if (h) a.push(num(h) + ' وعده قلیان');
+    return a.join(' و ');
   }
   function cleanText(ms) {
     var m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
@@ -220,8 +273,10 @@
     if (done > S.seenMs) {
       var m = MILESTONES[done - 1];
       S.seenMs = done; save();
+      if (API.confetti) API.confetti();
       sheet('<div class="ring" style="align-self:center">' + fa(done) + '/' + fa(MILESTONES.length) + '</div>' +
         '<div class="h2" style="text-align:center">یک مرحله‌ی تازه کامل شد!</div><div class="muted" style="text-align:center;line-height:1.9">' + m.title + '</div>' +
+        (API.shareCard ? '<button class="chip" data-hx="share-card" data-title="' + esc(m.title) + '" style="min-height:46px">ساختن کارت و اشتراک‌گذاری</button>' : '') +
         '<button class="primary" data-close>عالی</button>');
     }
   }
@@ -360,20 +415,23 @@
         (S.method === 1 ? taperCard() : '') +
         '<a class="card" href="#prep" style="flex-direction:row;align-items:center;gap:12px"><div class="col" style="flex:1"><div class="h2">آماده‌شدن برای روز ترک</div><div class="muted small">فهرست کارهای پیش از ترک</div></div>' + I.chev + '</a>'
       : null;
+    var hv = heroVals(st);
     return '<div class="screen">' +
       '<div class="row"><div class="col"><div class="muted">' + esc(todayFa.format(new Date())) + '</div>' +
       '<div class="h1">سلام' + (S.name ? '، ' + esc(S.name) : '') + '</div></div>' +
       '<div style="display:flex;gap:8px">' + (API.togetherIcon ? API.togetherIcon() : '') + '<a class="icon-btn" href="#settings" aria-label="تنظیمات اعلان‌ها">' + I.bell + '</a></div></div>' +
-      (hero ? hero : '<div class="hero"><div style="font-size:14px;font-weight:500;opacity:.9">مدت زمانی که سیگار نکشیده‌اید</div>' +
+      (hero ? hero : '<div class="hero"><div style="font-size:14px;font-weight:500;opacity:.9">مدت زمانی که ' + (useCig() ? 'سیگار' : 'قلیان') + ' نکشیده‌اید</div>' +
       '<div class="units"><div class="unit"><div class="big" id="c-d">۰</div><div class="lbl">روز</div></div>' +
       '<div class="unit"><div class="mid" id="c-h">۰۰</div><div class="lbl">ساعت</div></div>' +
       '<div class="unit"><div class="mid" id="c-m">۰۰</div><div class="lbl">دقیقه</div></div>' +
       '<div class="unit"><div class="mid" id="c-s">۰۰</div><div class="lbl">ثانیه</div></div></div>' +
       '<div class="sep"></div><div class="grid3">' +
-      '<div class="col"><div class="stat-v" id="s-n">' + num(st.notSmoked) + '</div><div class="stat-l">نخ نکشیده</div></div>' +
+      '<div class="col"><div class="stat-v" id="s-n">' + hv[0] + '</div><div class="stat-l">' + hv[1] + '</div></div>' +
       '<div class="col"><div class="stat-v" id="s-m">' + shortMoney(st.money) + '</div><div class="stat-l">' + cur() + ' پس‌انداز</div></div>' +
-      '<div class="col"><div class="stat-v" id="s-l">' + lifeText(st.lifeMin) + '</div><div class="stat-l">عمر برگشته</div></div>' +
-      '</div>' + (st.slipped ? '<div class="hero-slip"><span>از آخرین نخ: <b id="s-clean">' + cleanText(st.cleanMs) + '</b></span><span>' + num(st.slipped) + ' نخ در این دوره</span></div>' : '') + '</div>') +
+      '<div class="col"><div class="stat-v" id="s-l">' + hv[2] + '</div><div class="stat-l">' + hv[3] + '</div></div>' +
+      '</div>' + (S.product === 'both' ? '<div class="hero-slip"><span>قلیان: <b id="s-hk">' + num(st.hk) + '</b> وعده نکشیده</span></div>' : '') +
+      (st.slipped || st.slippedHk ? '<div class="hero-slip"><span>' + (useHk() ? 'از آخرین بار' : 'از آخرین نخ') + ': <b id="s-clean">' + cleanText(st.cleanMs) + '</b></span><span>' + slipAmountText(st.slipped, st.slippedHk) + ' در این دوره</span></div>' : '') + '</div>') +
+      priceRemindCard() + (API.homeExtra ? API.homeExtra() : '') +
       (!future ? '<div class="card pledge' + (pledged ? ' on' : '') + '" style="flex-direction:row;align-items:center;gap:12px">' +
         '<div class="col" style="flex:1"><div class="h2">' + (pledged ? 'تعهد امروز را دادید' : 'تعهد امروز') + '</div><div class="muted small">' + (pledged ? 'روزهای پیاپی: ' + num(streak) : 'فقط برای همین امروز: «امروز سیگار نمی‌کشم»') + '</div></div>' +
         (pledged ? '<div class="pledge-ok">✓</div>' : '<button class="chip on" data-act="pledge">متعهدم</button>') + '</div>' : '') +
@@ -398,7 +456,8 @@
       var e = $('#c-d'); if (!e) return;
       e.textContent = num(d); $('#c-h').textContent = pad(h); $('#c-m').textContent = pad(m); $('#c-s').textContent = pad(sec);
       var st = stats(); if (!$('#s-n')) return;
-      $('#s-n').textContent = num(st.notSmoked); $('#s-m').textContent = shortMoney(st.money); $('#s-l').textContent = lifeText(st.lifeMin);
+      var hv = heroVals(st); $('#s-n').textContent = hv[0]; $('#s-m').textContent = shortMoney(st.money); $('#s-l').textContent = hv[2];
+      var shk = $('#s-hk'); if (shk) shk.textContent = num(st.hk);
       var sc = $('#s-clean'); if (sc) sc.textContent = cleanText(st.cleanMs);
     }
     upd(); tick = setInterval(upd, 1000);
@@ -408,6 +467,7 @@
   VIEWS.sos = function () {
     return '<div class="screen no-nav" style="gap:18px">' +
       '<div class="row"><a class="icon-btn" href="#home" aria-label="بستن">' + I.close + '</a><div class="muted">هوس معمولاً چند دقیقه بیشتر نمی‌ماند</div></div>' +
+      (API.sosPhoto ? API.sosPhoto() : '') +
       '<div class="col" style="align-items:center;gap:6px;padding-top:8px"><div style="font-size:26px;font-weight:800">با هم نفس بکشیم</div>' +
       '<div class="muted" style="font-size:15px">دکمه را بزن و با دایره هماهنگ شو</div></div>' +
       '<div class="breath-wrap"><div class="breath-ring"><div class="breath" id="br"><b id="br-l">آماده‌ای؟</b><span id="br-h">تنفس ۴-۴-۶</span></div></div></div>' +
@@ -418,6 +478,7 @@
       '<button class="alt" data-act="wait">' + I.timer + 'فقط ۵ دقیقه صبر</button>' +
       '<button class="alt" data-act="walk">' + I.walk + 'یک قدم‌زدن کوتاه</button>' +
       (API.togetherSosButton ? API.togetherSosButton() : '') +
+      (API.heartSosButtons ? API.heartSosButtons() : '') +
       '<a class="alt" href="#game">' + I.breath + 'بازی یک‌دقیقه‌ای</a>' +
       '<button class="alt" data-act="card">' + I.spark + 'کارت انگیزشی</button>' +
       '<a class="alt" href="#thoughts">' + I.heart + 'این فکر را بررسی کن</a>' +
@@ -463,6 +524,7 @@
           (active ? '<div class="bar" style="height:6px"><div style="width:' + x.p + '%"></div></div><div class="muted small">' + num(Math.floor(x.p)) + '٪ — ' + leftText(x.left) + '</div>' : '') +
           '</div></div>';
       }).join('') +
+      (useHk() ? '<div class="card" style="background:var(--amber-tint);color:var(--amber-ink);line-height:2;font-size:14px"><b>قلیان هم دود است.</b> طبق مرکز کنترل بیماری‌های آمریکا (CDC)، کسی که یک ساعت قلیان می‌کشد حدود ۱۰۰ تا ۲۰۰ برابر یک نخ سیگار دود وارد ریه‌اش می‌کند. همین مراحل بهبود برای ترک قلیان هم برقرار است.</div>' : '') +
       '<div class="muted small" style="line-height:1.8">این زمان‌بندی‌ها میانگین‌های کلی هستند و برای هر نفر ممکن است فرق کند. برای مشاوره‌ی پزشکی با پزشک صحبت کنید.</div>' +
       '</div>' + nav('health');
   };
@@ -471,7 +533,7 @@
     var st = stats();
     var goalAmt = S.goal.amount || 0, saved = st.money;
     var pct = goalAmt > 0 ? Math.min(100, saved / goalAmt * 100) : 0;
-    var perDay = S.cpd * costPerCig();
+    var perDay = dailyCost();
     var daysLeft = goalAmt > saved && perDay > 0 ? Math.ceil((goalAmt - saved) / perDay) : 0;
     var DN = ['ی', 'د', 'س', 'چ', 'پ', 'ج', 'ش'];
     var counts = [], labels = [];
@@ -549,7 +611,7 @@
   var ideaFilter = 0;
   VIEWS.instead = function () {
     var st = stats();
-    var perDay = S.cpd * MIN_PER_CIG, total = st.notSmoked * MIN_PER_CIG;
+    var perDay = cpdEff() * MIN_PER_CIG + hkPerDay() * HK_MIN, total = st.freeMin;
     // پیشنهاد امروز: هر روز یکی، ثابت در طول روز
     var dayIdx = Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
     var today = IDEAS[dayIdx % IDEAS.length];
@@ -610,11 +672,11 @@
     }
     return '<div class="card"><div class="row"><div class="h2">روزهای بدون سیگار</div><div class="muted small">۱۴ روز اخیر</div></div>' +
       '<div class="cdays">' + cells + '</div>' +
-      '<div class="mlegend"><span><i style="background:var(--green)"></i>پاک</span><span><i style="background:#C0533A"></i>لغزش (عدد = تعداد نخ)</span></div>' +
+      '<div class="mlegend"><span><i style="background:var(--green)"></i>پاک</span><span><i style="background:#C0533A"></i>لغزش (عدد = ' + (useHk() ? 'تعداد' : 'تعداد نخ') + ')</span></div>' +
       '<div class="grid3" style="text-align:center"><div class="col"><b style="font-size:20px;color:var(--green)">' + num(pct) + '٪</b><span class="muted small">روزهای پاک</span></div>' +
       '<div class="col"><b style="font-size:20px">' + num(Math.floor(longest / 86400000)) + '</b><span class="muted small">طولانی‌ترین دوره (روز)</span></div>' +
-      '<div class="col"><b style="font-size:20px">' + num(slipCigs()) + '</b><span class="muted small">نخ در کل این دوره</span></div></div>' +
-      (slipDays ? '<div class="muted small" style="line-height:1.9">هر لغزش فقط همان چند نخ را از آمار کم می‌کند؛ بقیه‌ی مسیرتان سر جایش است.</div>' : '') + '</div>';
+      '<div class="col"><b style="font-size:20px">' + num(slipCigs() + slipHk()) + '</b><span class="muted small">' + (useHk() ? (useCig() ? 'نخ و وعده‌ی لغزش' : 'وعده‌ی لغزش') : 'نخ در کل این دوره') + '</span></div></div>' +
+      (slipDays ? '<div class="muted small" style="line-height:1.9">هر لغزش فقط همان مقدار را از آمار کم می‌کند؛ بقیه‌ی مسیرتان سر جایش است.</div>' : '') + '</div>';
   }
   function dashboardCards() {
     // ۱) حال روزانه در ۱۴ روز گذشته
@@ -663,9 +725,9 @@
       '<div style="line-height:2;font-size:14px">' + TRIGGERS[top][1] + '</div></div>' : '';
 
     // ۵) خلاصه
-    var slipsN = slipCigs();
+    var slipsN = slipCigs() + slipHk();
     var sum = '<div class="grid3"><div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v" style="color:var(--green)">' + num(S.cravings.length) + '</div><div class="muted small">هوس شکست‌خورده</div></div>' +
-      '<div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v">' + num(slipsN) + '</div><div class="muted small">نخ لغزش</div></div>' +
+      '<div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v">' + num(slipsN) + '</div><div class="muted small">' + (useHk() ? 'لغزش' : 'نخ لغزش') + '</div></div>' +
       '<div class="card" style="padding:12px;gap:2px;align-items:center"><div class="stat-v">' + num(logged) + '</div><div class="muted small">ثبت حال</div></div></div>';
     // چه چیزی بیشتر کمک کرده است
     var HL = API.HELPS || [], hc = HL.map(function () { return 0; }), hAny = 0;
@@ -676,7 +738,60 @@
       helpCard = '<div class="card"><div class="h2">چه چیزی بیشتر کمک کرده؟</div>' + ho.map(function (x) { return '<div class="hrow"><div class="hl">' + HL[x[1]] + '</div><div class="hbar"><div style="width:' + Math.max(6, x[0] / hm * 100) + '%;background:var(--mint)"></div></div><div class="hn">' + num(x[0]) + '</div></div>'; }).join('') + '</div>';
     }
     var histLink = S.cravings.length ? '<a class="chip" href="#cravings" style="display:flex;align-items:center;justify-content:center">تاریخچه‌ی کامل هوس‌ها</a>' : '';
-    return sum + cleanDaysCard() + moodCard + trigCard + timeCard + helpCard + tip + histLink;
+    return sum + cleanDaysCard() + priceCard() + (API.dashExtra ? API.dashExtra() : '') + moodCard + trigCard + timeCard + helpCard + tip + histLink;
+  }
+
+  // ---------- قیمت و تورم ----------
+  function lastPriceChange() { var l = S.prices[S.prices.length - 1]; return Math.max(l && l.t ? l.t : S.quitAt, S.priceAsk || 0); }
+  function priceRemindCard() {
+    if (!S.ready || S.quitAt > Date.now() || Date.now() - S.quitAt < 30 * 86400000 || Date.now() - lastPriceChange() < 60 * 86400000) return '';
+    return '<div class="card" style="gap:10px"><div class="h2">' + (useCig() ? 'قیمت سیگار' : 'قیمت قلیان') + ' عوض شده؟</div>' +
+      '<div class="muted small" style="line-height:1.9">اگر قیمت بالا رفته، قیمت تازه را وارد کنید تا پس‌اندازتان از امروز با قیمت واقعی حساب شود. روزهای قبل با همان قیمت قبلی می‌مانند.</div>' +
+      '<div class="grid2"><button class="chip on" data-act="price">به‌روز کردن قیمت</button><button class="chip" data-act="price-later">قیمت همان است</button></div></div>';
+  }
+  function priceCard() {
+    if (!S.ready || !S.prices.length) return '';
+    var now = Date.now(), first = S.prices[0], firstDaily = cpdEff() * first.c + hkPerDay() * first.h, nowDaily = dailyCost(now);
+    var up = firstDaily > 0 ? Math.round((nowDaily / firstDaily - 1) * 100) : 0;
+    var chart = '';
+    if (S.prices.length > 1) {
+      var t0 = Math.min(S.quitAt, S.prices[1].t), span = Math.max(1, now - t0), W = 300, Hh = 80;
+      var vals = S.prices.map(function (p) { return cpdEff() * p.c + hkPerDay() * p.h; }), vmax = Math.max.apply(null, vals) || 1, vmin = Math.min.apply(null, vals);
+      var y = function (v) { return Hh - 8 - (vmax === vmin ? 0.5 : (v - vmin) / (vmax - vmin)) * (Hh - 20); };
+      // نمودار پله‌ای: از راست (قدیمی) به چپ (امروز)
+      var x = function (t) { return W - Math.max(0, t - t0) / span * W; };
+      var d = 'M' + W + ',' + y(vals[0]).toFixed(1);
+      for (var i = 1; i < S.prices.length; i++) { var xi = x(S.prices[i].t).toFixed(1); d += ' L' + xi + ',' + y(vals[i - 1]).toFixed(1) + ' L' + xi + ',' + y(vals[i]).toFixed(1); }
+      d += ' L0,' + y(vals[vals.length - 1]).toFixed(1);
+      chart = '<svg viewBox="0 0 ' + W + ' ' + Hh + '" style="width:100%;height:auto" aria-label="نمودار قیمت"><path d="' + d + '" fill="none" stroke="var(--amber)" stroke-width="3" stroke-linejoin="round"/></svg>' +
+        '<div class="row muted small"><span>' + faDate.format(new Date(t0)) + '</span><span>امروز</span></div>';
+    }
+    return '<div class="card"><div class="row"><div class="h2">قیمت و تورم</div><button class="chip" data-act="price" style="min-height:34px;font-size:12px">قیمت تازه</button></div>' +
+      '<div class="grid2" style="text-align:center"><div class="col"><b style="font-size:18px">' + shortMoney(nowDaily) + '</b><span class="muted small">هزینه‌ی روزانه با قیمت امروز (' + cur() + ')</span></div>' +
+      '<div class="col"><b style="font-size:18px">' + shortMoney(nowDaily * 30) + '</b><span class="muted small">اگر هنوز می‌کشیدید، در ماه</span></div></div>' +
+      chart +
+      (S.prices.length > 1 ? '<div class="muted small" style="line-height:1.9">' + (up > 0 ? 'از روزی که ثبت کرده‌اید، قیمت ' + num(up) + '٪ بالا رفته است. هر بار که گران‌تر می‌شود، پس‌انداز روزانه‌ی شما هم بیشتر می‌شود.' : 'قیمت‌ها از روز اول تغییری نکرده است.') + '</div>'
+        : '<div class="muted small" style="line-height:1.9">هر وقت قیمت عوض شد، «قیمت تازه» را بزنید. پس‌انداز روزهای قبل با قیمت قبلی و روزهای بعد با قیمت تازه حساب می‌شود.</div>') + '</div>';
+  }
+  function priceSheet() {
+    var f = '';
+    if (useCig()) {
+      var bt = S.buyType || 'pack';
+      f += bt === 'pack' ? moneyField('pr-a', 'قیمت تازه‌ی هر پاکت (تومان)', S.packPrice, '') : bt === 'single' ? moneyField('pr-a', 'قیمت تازه‌ی هر نخ (تومان)', S.singlePrice, '') : moneyField('pr-a', 'قیمت تازه‌ی هر بسته توتون (تومان)', S.pouchPrice, '');
+    }
+    if (useHk()) f += moneyField('pr-h', 'هزینه‌ی تازه‌ی هر وعده قلیان (تومان)', S.hkPrice, '');
+    sheet('<div class="h2">قیمت تازه</div><div class="muted small" style="line-height:1.9">قیمت تازه از همین امروز حساب می‌شود؛ پس‌انداز روزهای گذشته تغییر نمی‌کند.</div>' + f +
+      '<button class="primary" id="pr-ok">ثبت قیمت از امروز</button><button class="ghost" data-close>انصراف</button>', function (bg) {
+      bg.querySelector('#pr-ok').onclick = function () {
+        var a = bg.querySelector('#pr-a'), h = bg.querySelector('#pr-h');
+        var av = a ? parseInt(toEn(a.value) || '0', 10) : 0, hv = h ? parseInt(toEn(h.value) || '0', 10) : 0;
+        if ((a && !av) || (h && !hv)) { toast('قیمت را وارد کنید'); return; }
+        if (a) { var bt2 = S.buyType || 'pack'; if (bt2 === 'pack') S.packPrice = av; else if (bt2 === 'single') S.singlePrice = av; else S.pouchPrice = av; }
+        if (h) S.hkPrice = hv;
+        S.prices.push({ t: Date.now(), c: costPerCig(), h: S.hkPrice || 0 }); S.priceAsk = Date.now();
+        save(); syncWidget(); bg.remove(); toast('قیمت تازه ثبت شد'); render();
+      };
+    });
   }
 
   // ---------- ویجت صفحه‌ی اصلی گوشی ----------
@@ -689,8 +804,14 @@
       var W = null;
       try { W = window.Capacitor && (window.Capacitor.Plugins.RahaWidget || (window.Capacitor.registerPlugin && window.Capacitor.registerPlugin('RahaWidget'))); } catch (e) {}
       if (!W || !IS_NATIVE) return;
+      var now = Date.now(), ls = lastSlip(), cig = useCig();
       var data = {
-        ready: !!S.ready, quitAt: S.quitAt, cpd: S.cpd, costPerCig: costPerCig(), slipCigs: slipCigs(),
+        ready: !!S.ready, quitAt: S.quitAt, costPerCig: costPerCig(),
+        // واحد شمارش ویجت: نخ سیگار، یا برای ترک فقط قلیان، وعده‌ی قلیان
+        cpd: cig ? S.cpd : hkPerDay(), slipCigs: cig ? slipCigs() : slipHk(), unit: cig ? 'نخ نکشیده' : 'وعده قلیان نکشیده',
+        // پول: مقدار تا همین لحظه (با تاریخچه‌ی قیمت) + نرخ روزانه با قیمت امروز
+        moneyBase: moneySaved(now), moneyAt: now, moneyRate: dailyCost(now) / 86400000,
+        lastSlipAt: ls ? ls.t : 0,
         rial: S.set.currency === 'rial',
         milestones: MILESTONES.map(function (m) { return { t: m.t, title: m.title }; })
       };
@@ -784,7 +905,7 @@
 
       '<div class="sec">برنامه</div><div class="card sgroup">' +
       '<a class="srow" href="#plan"><div class="col" style="flex:1"><div class="st">برنامه‌ی ترک</div><div class="muted small">' +
-      'روزی ' + num(S.cpd) + ' نخ · ' + buySummary() + '</div></div>' + I.chev + '</a>' +
+      planSummary() + '</div></div>' + I.chev + '</a>' +
       '</div>' +
 
       '<div class="sec">اعلان‌ها</div><div class="card sgroup">' +
@@ -842,7 +963,7 @@
   // صفحه‌ی برنامه (هم شروع، هم ویرایش)
   var draft = null;
   function freshDraft() {
-    return { name: S.name, cpd: S.cpd, perPack: S.perPack, packPrice: S.packPrice, buyType: S.buyType || 'pack', singlePrice: S.singlePrice || 0, pouchPrice: S.pouchPrice || 0, perPouch: S.perPouch || 40, rollExtra: S.rollExtra || 0, method: S.method, reasons: S.reasons.slice(), triggers: (S.triggers || []).slice(), myReasons: (S.myReasons || []).slice(), taperDays: S.ready && S.method === 1 ? 0 : 14, when: S.ready ? 'keep' : 'now' };
+    return { name: S.name, cpd: S.cpd, perPack: S.perPack, packPrice: S.packPrice, buyType: S.buyType || 'pack', singlePrice: S.singlePrice || 0, pouchPrice: S.pouchPrice || 0, perPouch: S.perPouch || 40, rollExtra: S.rollExtra || 0, product: S.product || 'cig', hkWeek: S.hkWeek || 3, hkPrice: S.hkPrice || 0, method: S.method, reasons: S.reasons.slice(), triggers: (S.triggers || []).slice(), myReasons: (S.myReasons || []).slice(), taperDays: S.ready && S.method === 1 ? 0 : 14, when: S.ready ? 'keep' : 'now' };
   }
   function moneyField(id, label, val, ph) {
     return '<div class="field"><label for="' + id + '">' + label + '</label><input class="input" id="' + id + '" inputmode="numeric" data-money placeholder="' + ph + '" value="' + (val ? num(val) : '') + '"></div>';
@@ -854,6 +975,10 @@
     var c = costPerCig(draft), d = c * draft.cpd;
     return c ? 'هر نخ حدود ' + num(Math.round(c)) + ' تومان · روزی ' + num(Math.round(d)) + ' تومان · ماهی ' + num(Math.round(d * 30)) + ' تومان' : '';
   }
+  function hkLine() {
+    var m = draft.hkPrice * draft.hkWeek * 30 / 7;
+    return draft.hkPrice ? 'هفته‌ای ' + num(draft.hkPrice * draft.hkWeek) + ' تومان · ماهی حدود ' + num(Math.round(m)) + ' تومان' : '';
+  }
   function planView(isSetup) {
     if (!draft) draft = freshDraft();
     var M = [['یک‌باره', 'از یک تاریخ مشخص، کامل کنار بگذار'], ['تدریجی', 'هر هفته تعداد را کم کن']];
@@ -861,6 +986,15 @@
       (isSetup ? '<div class="col" style="gap:8px"><div class="muted">به رها خوش آمدید</div><div style="font-size:24px;font-weight:800;line-height:1.5">بیایید برنامه‌ی ترک شما را بسازیم</div></div>'
         : '<div class="title-bar"><a class="icon-btn" href="#settings" aria-label="بازگشت">' + I.back + '</a><div class="h1">برنامه‌ی ترک</div></div>') +
       '<div class="card"><div class="field"><label for="f-name">اسم شما (اختیاری)</label><input class="input" id="f-name" value="' + esc(draft.name) + '" maxlength="30"></div></div>' +
+      '<div class="card"><div style="font-size:15px;font-weight:700">چه چیزی را ترک می‌کنید؟</div>' +
+      '<div class="seg" style="align-self:stretch">' + [['cig', 'سیگار'], ['hookah', 'قلیان'], ['both', 'هر دو']].map(function (x) { return '<button style="flex:1" data-prod="' + x[0] + '" class="' + (draft.product === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div></div>' +
+      (draft.product !== 'cig'
+        ? '<div class="card"><div class="row"><div class="col"><div style="font-size:15px;font-weight:700">هفته‌ای چند وعده قلیان؟</div><div class="muted small">هر بار نشستن پای قلیان یک وعده است</div></div>' +
+          '<div class="stepper"><button data-hstep="1" aria-label="افزایش">+</button><div class="v" id="f-hkw">' + num(draft.hkWeek) + '</div><button data-hstep="-1" aria-label="کاهش">−</button></div></div>' +
+          moneyField('f-hk', 'هزینه‌ی هر وعده (تومان؛ در خانه یا قهوه‌خانه)', draft.hkPrice, 'مثلاً ۱۵۰۰۰۰') +
+          '<div class="muted small" id="f-hkline">' + hkLine() + '</div></div>'
+        : '') +
+      (draft.product === 'hookah' ? '' :
       '<div class="card" style="flex-direction:row;align-items:center;justify-content:space-between"><div class="col"><div style="font-size:15px;font-weight:700">روزی چند نخ می‌کشیدید؟</div><div class="muted small">تقریبی هم کافی است</div></div>' +
       '<div class="stepper"><button data-step="1" aria-label="افزایش">+</button><div class="v" id="f-cpd">' + num(draft.cpd) + '</div><button data-step="-1" aria-label="کاهش">−</button></div></div>' +
       '<div class="card"><div style="font-size:15px;font-weight:700">سیگار را چطور تهیه می‌کنید؟</div>' +
@@ -873,7 +1007,7 @@
         ? moneyField('f-single', 'قیمت هر نخ (تومان)', draft.singlePrice, 'مثلاً ۸۰۰۰')
         : moneyField('f-pouch', 'قیمت هر بسته توتون (تومان)', draft.pouchPrice, 'مثلاً ۴۰۰۰۰۰') + numField('f-perpouch', 'با هر بسته توتون چند نخ می‌پیچید؟', draft.perPouch) +
           moneyField('f-extra', 'هزینه‌ی کاغذ و فیلتر برای هر نخ (تومان، اختیاری)', draft.rollExtra, 'مثلاً ۵۰۰')) +
-      '<div class="muted small" id="f-costline">' + costLine() + '</div></div>' +
+      '<div class="muted small" id="f-costline">' + costLine() + '</div></div>') +
       '<div class="col" style="gap:8px"><div style="font-size:15px;font-weight:700">روش ترک</div><div class="grid2">' +
       M.map(function (m, i) { return '<button class="method' + (draft.method === i ? ' on' : '') + '" data-method="' + i + '"><b>' + m[0] + '</b><span>' + m[1] + '</span></button>'; }).join('') + '</div></div>' +
       '<div class="col" style="gap:8px"><div style="font-size:15px;font-weight:700">چرا می‌خواهید ترک کنید؟</div><div class="chips">' +
@@ -909,22 +1043,38 @@
     if ((v = intOf('f-pouch', 0)) !== null) draft.pouchPrice = v;
     if ((v = intOf('f-perpouch', 40)) !== null) draft.perPouch = Math.max(1, v);
     if ((v = intOf('f-extra', 0)) !== null) draft.rollExtra = v;
+    if ((v = intOf('f-hk', 0)) !== null) draft.hkPrice = v;
+  }
+
+  function commitPlan(when, priceMode) {
+    S.name = draft.name; S.cpd = draft.cpd; S.perPack = draft.perPack; S.packPrice = draft.packPrice; S.buyType = draft.buyType; S.singlePrice = draft.singlePrice; S.pouchPrice = draft.pouchPrice; S.perPouch = draft.perPouch; S.rollExtra = draft.rollExtra;
+    S.product = draft.product; S.hkWeek = draft.hkWeek; if (draft.product !== 'cig') S.hkPrice = draft.hkPrice;
+    S.method = draft.method; S.myReasons = (draft.myReasons || []).slice(); S.reasons = draft.reasons.slice(); S.triggers = draft.triggers.slice(); S.quitAt = when;
+    var np = { c: costPerCig(), h: S.hkPrice || 0 };
+    if (priceMode === 'fix') S.prices = [{ t: 0, c: np.c, h: np.h }];
+    else if (priceMode === 'new') S.prices.push({ t: Date.now(), c: np.c, h: np.h });
+    var first = !S.ready; S.ready = true; S.seenMs = -1; save(); draft = null;
+    reschedule(first); syncWidget();
+    if (first) go('home'); else { toast('ذخیره شد'); go('settings'); }
   }
 
   // ---------- ثبت لغزش ----------
   // لغزش شمارنده را صفر نمی‌کند؛ فقط همان تعداد نخ از آمار کم می‌شود
   function slipSheet() {
-    var n = 1, when = 'now', g = -1;
+    var n = 1, when = 'now', g = -1, k = S.product === 'hookah' ? 'h' : 'c';
+    function qText() { return k === 'h' ? 'چند وعده قلیان؟' : 'چند نخ کشیدید؟'; }
     var hh = new Date(); var tv = ('0' + hh.getHours()).slice(-2) + ':' + ('0' + hh.getMinutes()).slice(-2);
     sheet('<div class="h2">اشکالی ندارد؛ ثبتش کنیم و ادامه بدهیم</div>' +
-      '<div class="muted small" style="line-height:1.9">یک یا چند نخ، مسیرتان را خراب نمی‌کند. شمارنده‌ی ترک ادامه پیدا می‌کند و فقط همین تعداد نخ از آمارتان کم می‌شود.</div>' +
-      '<div class="row"><div class="st">چند نخ کشیدید؟</div><div class="stepper"><button data-sn="1" aria-label="بیشتر">+</button><div class="v" id="sl-n">۱</div><button data-sn="-1" aria-label="کمتر">−</button></div></div>' +
+      '<div class="muted small" style="line-height:1.9">یک لغزش مسیرتان را خراب نمی‌کند. شمارنده‌ی ترک ادامه پیدا می‌کند و فقط همین مقدار از آمارتان کم می‌شود.</div>' +
+      (S.product === 'both' ? '<div class="seg"><button style="flex:1" data-sk="c" class="on">سیگار</button><button style="flex:1" data-sk="h">قلیان</button></div>' : '') +
+      '<div class="row"><div class="st" id="sl-q">' + qText() + '</div><div class="stepper"><button data-sn="1" aria-label="بیشتر">+</button><div class="v" id="sl-n">۱</div><button data-sn="-1" aria-label="کمتر">−</button></div></div>' +
       '<div class="st">کِی؟</div><div class="seg" id="sl-w"><button style="flex:1" data-sw="now" class="on">همین الان</button><button style="flex:1" data-sw="today">امروز، ساعت…</button><button style="flex:1" data-sw="yday">دیروز</button></div>' +
       '<input type="time" class="input" id="sl-time" value="' + tv + '" style="direction:ltr;display:none">' +
       '<div class="st">چه شد؟</div><div class="chips">' + TRIGGERS.map(function (x, j) { return '<button class="chip" data-sg="' + j + '">' + x[0] + '</button>'; }).join('') + '</div>' +
       '<textarea class="input" id="sl-note" rows="2" maxlength="500" placeholder="یادداشت (اختیاری)" style="padding:10px 14px;min-height:60px;resize:none"></textarea>' +
       '<button class="primary" id="sl-save">ثبت و ادامه‌ی مسیر</button>' +
       '<button class="ghost" id="sl-reset" style="font-size:13px">می‌خواهم شمارنده را از صفر شروع کنم</button>', function (bg) {
+      bg.querySelectorAll('[data-sk]').forEach(function (b) { b.onclick = function () { k = b.getAttribute('data-sk'); bg.querySelectorAll('[data-sk]').forEach(function (x) { x.classList.toggle('on', x === b); }); bg.querySelector('#sl-q').textContent = qText(); }; });
       bg.querySelectorAll('[data-sn]').forEach(function (b) { b.onclick = function () { n = Math.max(1, Math.min(60, n + +b.getAttribute('data-sn'))); bg.querySelector('#sl-n').textContent = num(n); }; });
       bg.querySelectorAll('[data-sw]').forEach(function (b) { b.onclick = function () { when = b.getAttribute('data-sw'); bg.querySelectorAll('[data-sw]').forEach(function (x) { x.classList.toggle('on', x === b); }); bg.querySelector('#sl-time').style.display = when === 'now' ? 'none' : ''; }; });
       bg.querySelectorAll('[data-sg]').forEach(function (b) { b.onclick = function () { g = g === +b.getAttribute('data-sg') ? -1 : +b.getAttribute('data-sg'); bg.querySelectorAll('[data-sg]').forEach(function (x) { x.classList.toggle('on', +x.getAttribute('data-sg') === g); }); }; });
@@ -938,13 +1088,15 @@
       bg.querySelector('#sl-save').onclick = function () {
         var t = when2t();
         if (t < S.quitAt) { toast('این زمان قبل از روز ترک است'); return; }
-        S.slips.push({ t: t, n: n, g: g, note: bg.querySelector('#sl-note').value.trim().slice(0, 500) });
+        var rec = { t: t, n: n, g: g, note: bg.querySelector('#sl-note').value.trim().slice(0, 500) }; if (k === 'h') rec.k = 'h';
+        S.slips.push(rec);
         save(); reschedule(false); syncWidget(); slipCheckins(); bg.remove();
         var st = stats();
         if (route() !== 'home') go('home'); else render();
         setTimeout(function () { sheet('<div class="wl-art" style="font-size:44px;margin:0">💚</div><div class="h2" style="text-align:center">ثبت شد. مسیرتان ادامه دارد</div>' +
-          '<div class="card" style="background:var(--green-tint);gap:6px;text-align:center"><div><b style="font-size:22px;color:var(--green-dark)">' + num(Math.floor(st.days)) + '</b> روز ترک</div><div><b style="font-size:22px;color:var(--green-dark)">' + num(st.notSmoked) + '</b> نخ نکشیده</div></div>' +
-          '<div class="muted" style="line-height:2;text-align:center">این لغزش ' + num(n) + ' نخ از آمارتان کم کرد، نه همه‌ی آن را. مراحل کوتاه‌مدت سلامتی از همین الان دوباره شمرده می‌شوند.</div>' +
+          '<div class="card" style="background:var(--green-tint);gap:6px;text-align:center"><div><b style="font-size:22px;color:var(--green-dark)">' + num(Math.floor(st.days)) + '</b> روز ترک</div><div><b style="font-size:22px;color:var(--green-dark)">' + heroVals(st)[0] + '</b> ' + heroVals(st)[1] + '</div></div>' +
+          '<div class="muted" style="line-height:2;text-align:center">این لغزش ' + (k === 'h' ? slipAmountText(0, n) : slipAmountText(n, 0)) + ' از آمارتان کم کرد، نه همه‌ی آن را. مراحل کوتاه‌مدت سلامتی از همین الان دوباره شمرده می‌شوند.</div>' +
+          (API.letterAfterSlip ? API.letterAfterSlip() : '') +
           (g >= 0 ? '<a class="chip on" href="#ifthen" style="display:flex;align-items:center;justify-content:center;min-height:48px">برای «' + TRIGGERS[g][0] + '» یک برنامه‌ی اگر-آنگاه بنویسیم</a>' : '') +
           '<button class="primary" data-close>ادامه</button>'); }, 150);
       };
@@ -952,7 +1104,7 @@
         bg.remove();
         sheet('<div class="h2">شمارنده از صفر شروع شود؟</div><div class="muted" style="line-height:2">روز ترک به همین الان منتقل می‌شود و روزها، پس‌انداز و نخ‌های نکشیده از صفر شمرده می‌شوند. اگر فقط چند نخ کشیده‌اید، لازم نیست؛ ثبت لغزش کافی است.</div>' +
           '<button class="primary" id="rs-go" style="background:var(--night)">بله، از صفر</button><button class="ghost" data-close>نه، برگرد</button>', function (bg2) {
-          bg2.querySelector('#rs-go').onclick = function () { S.slips.push({ t: Date.now(), n: n, g: g, reset: true }); S.quitAt = Date.now(); S.seenMs = -1; save(); reschedule(false); syncWidget(); slipCheckins(); bg2.remove(); go('home'); render(); };
+          bg2.querySelector('#rs-go').onclick = function () { S.slips.push(k === 'h' ? { t: Date.now(), n: n, g: g, k: 'h', reset: true } : { t: Date.now(), n: n, g: g, reset: true }); S.quitAt = Date.now(); S.seenMs = -1; save(); reschedule(false); syncWidget(); slipCheckins(); bg2.remove(); go('home'); render(); };
         });
       };
     });
@@ -996,6 +1148,12 @@
       draft.cpd = Math.min(80, Math.max(1, draft.cpd + +t.getAttribute('data-step')));
       $('#f-cpd').textContent = num(draft.cpd); var cl0 = $('#f-costline'); if (cl0) cl0.textContent = costLine(); return;
     }
+    if (t.hasAttribute('data-prod')) { readDraftInputs(); draft.product = t.getAttribute('data-prod'); render(); return; }
+    if (t.hasAttribute('data-hstep')) {
+      readDraftInputs();
+      draft.hkWeek = Math.min(28, Math.max(1, draft.hkWeek + +t.getAttribute('data-hstep')));
+      $('#f-hkw').textContent = num(draft.hkWeek); var hl0 = $('#f-hkline'); if (hl0) hl0.textContent = hkLine(); return;
+    }
     if (t.hasAttribute('data-taper')) { readDraftInputs(); draft.taperDays = +t.getAttribute('data-taper'); render(); return; }
     if (t.hasAttribute('data-buy')) { readDraftInputs(); draft.buyType = t.getAttribute('data-buy'); render(); return; }
     if (t.hasAttribute('data-method')) { readDraftInputs(); draft.method = +t.getAttribute('data-method'); render(); return; }
@@ -1015,9 +1173,11 @@
     switch (act) {
       case 'save': {
         readDraftInputs();
-        if (draft.buyType === 'pack' && !draft.packPrice) { toast('لطفاً قیمت پاکت را وارد کنید'); $('#f-price').focus(); return; }
-        if (draft.buyType === 'single' && !draft.singlePrice) { toast('لطفاً قیمت هر نخ را وارد کنید'); $('#f-single').focus(); return; }
-        if (draft.buyType === 'roll' && !draft.pouchPrice) { toast('لطفاً قیمت بسته‌ی توتون را وارد کنید'); $('#f-pouch').focus(); return; }
+        var dCig = draft.product !== 'hookah', dHk = draft.product !== 'cig';
+        if (dHk && !draft.hkPrice) { toast('لطفاً هزینه‌ی هر وعده قلیان را وارد کنید'); $('#f-hk').focus(); return; }
+        if (dCig && draft.buyType === 'pack' && !draft.packPrice) { toast('لطفاً قیمت پاکت را وارد کنید'); $('#f-price').focus(); return; }
+        if (dCig && draft.buyType === 'single' && !draft.singlePrice) { toast('لطفاً قیمت هر نخ را وارد کنید'); $('#f-single').focus(); return; }
+        if (dCig && draft.buyType === 'roll' && !draft.pouchPrice) { toast('لطفاً قیمت بسته‌ی توتون را وارد کنید'); $('#f-pouch').focus(); return; }
         var when = S.quitAt;
         if (draft.method === 1) {
           if (draft.taperDays) { S.taperStart = Date.now(); S.taperDays = draft.taperDays; when = Date.now() + draft.taperDays * 86400000; }
@@ -1030,11 +1190,20 @@
           if (!dv) { toast('تاریخ و ساعت را انتخاب کنید'); return; }
           when = new Date(dv).getTime();
         }
-        S.name = draft.name; S.cpd = draft.cpd; S.perPack = draft.perPack; S.packPrice = draft.packPrice; S.buyType = draft.buyType; S.singlePrice = draft.singlePrice; S.pouchPrice = draft.pouchPrice; S.perPouch = draft.perPouch; S.rollExtra = draft.rollExtra;
-        S.method = draft.method; S.myReasons = (draft.myReasons || []).slice(); S.reasons = draft.reasons.slice(); S.triggers = draft.triggers.slice(); S.quitAt = when;
-        var first = !S.ready; S.ready = true; S.seenMs = -1; save(); draft = null;
-        reschedule(first); syncWidget();
-        if (first) go('home'); else { toast('ذخیره شد'); go('settings'); }
+        // اگر قیمت عوض شده: گران شده (از امروز) یا اشتباه قبلی درست می‌شود (از اول)؟
+        var lastP = S.prices[S.prices.length - 1];
+        var newC = costPerCig(draft), newH = dHk ? draft.hkPrice : (S.hkPrice || 0);
+        var priceChanged = S.ready && lastP && (Math.abs(lastP.c - newC) > 0.5 || Math.abs(lastP.h - newH) > 0.5);
+        if (priceChanged && when < Date.now() && draft.when !== 'now') {
+          var w0 = when;
+          sheet('<div class="h2">قیمت تغییر کرده است</div><div class="muted" style="line-height:2">قیمت گران شده، یا قیمت قبلی را اشتباه وارد کرده بودید؟</div>' +
+            '<button class="primary" id="pc-new">گران شده؛ از امروز حساب شود</button><button class="chip" id="pc-fix" style="min-height:48px">اشتباه بود؛ از روز اول درست شود</button><button class="ghost" data-close>انصراف</button>', function (bg) {
+            bg.querySelector('#pc-new').onclick = function () { bg.remove(); commitPlan(w0, 'new'); };
+            bg.querySelector('#pc-fix').onclick = function () { bg.remove(); commitPlan(w0, 'fix'); };
+          });
+          return;
+        }
+        commitPlan(when, !S.ready || !S.prices.length || draft.when === 'now' || when >= Date.now() ? 'fix' : null);
         return;
       }
       case 'reset':
@@ -1082,6 +1251,8 @@
         });
         return;
       case 'slip': slipSheet(); return;
+      case 'price': priceSheet(); return;
+      case 'price-later': S.priceAsk = Date.now(); save(); render(); return;
       case 'reasons':
         sheet('<div class="h2">دلیل‌های شما برای ترک</div><div class="chips">' +
           (S.reasons.length ? S.reasons.map(function (r) { return '<span class="chip on" style="display:inline-flex;align-items:center">' + REASONS[r] + '</span>'; }).join('') : '<div class="muted">هنوز دلیلی انتخاب نکرده‌اید. از «برنامه من» اضافه کنید.</div>') +
@@ -1125,7 +1296,7 @@
       var v = toEn(el.value); el.value = v ? num(parseInt(v, 10)) : '';
     }
     if (draft && (el.hasAttribute('data-money') || el.hasAttribute('data-numf'))) {
-      readDraftInputs(); var cl = $('#f-costline'); if (cl) cl.textContent = costLine();
+      readDraftInputs(); var cl = $('#f-costline'); if (cl) cl.textContent = costLine(); var hl = $('#f-hkline'); if (hl) hl.textContent = hkLine();
     }
   });
 
@@ -1154,6 +1325,8 @@
     reschedule: reschedule, notifPermission: notifPermission, ensureChannel: ensureChannel, LN: LN, syncWidget: syncWidget,
     slipsSinceQuit: slipsSinceQuit, slipCigs: slipCigs, lastSlip: lastSlip, cleanText: cleanText, slipSheet: slipSheet,
     cv: cv, faDate: faDate, minText: minText, lifeText: lifeText, TABS: TABS,
+    useCig: useCig, useHk: useHk, cpdEff: cpdEff, hkPerDay: hkPerDay, slipHk: slipHk, moneySaved: moneySaved, priceAt: priceAt, dailyCost: dailyCost,
+    heroVals: heroVals, slipAmountText: slipAmountText, priceSheet: priceSheet, moneyField: moneyField, cleanMs: cleanMs,
     shortMoney: shortMoney, cur: cur, copy: function (t) { try { navigator.clipboard.writeText(t).then(function () { toast('کپی شد'); }); } catch (e) {} }
   };
   if (window.RAHA_MORE) { try { window.RAHA_MORE(API); } catch (e) { console.error(e); } }
@@ -1161,6 +1334,7 @@
   if (window.RAHA_TOGETHER) { try { window.RAHA_TOGETHER(API); } catch (e) { console.error(e); } }
   if (window.RAHA_LIB) { try { window.RAHA_LIB(API); } catch (e) { console.error(e); } }
   if (window.RAHA_STATS) { try { window.RAHA_STATS(API); } catch (e) { console.error(e); } }
+  if (window.RAHA_HEART) { try { window.RAHA_HEART(API); } catch (e) { console.error(e); } }
 
   render();
 

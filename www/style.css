@@ -371,3 +371,18 @@ html[data-theme="dark"] .tag-slip{background:#3A1D18 !important;color:#F4AB9B !i
 .hist-dot.slip{background:#C0533A}
 
 .sheet{max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* ---------- انگیزه‌های من، جشن، قلیان و قیمت ---------- */
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:200}
+.cel-num{font-size:72px;font-weight:800;color:var(--green);text-align:center;line-height:1.2}
+.sos-photo{position:relative;border-radius:22px;overflow:hidden;min-height:150px}
+.sos-photo img{display:block;width:100%;max-height:230px;object-fit:cover}
+.sos-photo div{position:absolute;inset:auto 0 0 0;padding:26px 16px 12px;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#FFFFFF;font-weight:700;font-size:15px}
+.voice-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:16px;background:var(--input);border:1px solid var(--line)}
+.voice-row b{font-size:14px}
+.vplay{width:44px;height:44px;border-radius:50%;border:none;background:var(--green);color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex:none}
+.rec-dot{width:22px;height:22px;border-radius:50%;background:#C0533A;align-self:center;animation:recpulse 1s infinite}
+@keyframes recpulse{50%{opacity:.25}}
+.letter-text{white-space:pre-wrap;line-height:2.2;font-size:15px;background:var(--amber-tint);color:var(--ink);padding:16px;border-radius:16px;max-height:55vh;overflow-y:auto}
+.letter-sealed{align-items:center;text-align:center}
+.letter-sealed .env{font-size:54px;line-height:1.2}
