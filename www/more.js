@@ -26,7 +26,7 @@ window.RAHA_MORE = function (A) {
   V.welcome = function () {
     var s = SLIDES[slide], last = slide === SLIDES.length - 1;
     return '<div class="screen no-nav welcome">' +
-      '<div class="row"><div></div>' + (last ? '' : '<button class="ghost" data-mo="wl-skip" style="padding:0;min-height:36px">رد شدن</button>') + '</div>' +
+      '<div class="row"><button class="ghost" data-lang-toggle style="padding:0;min-height:36px">' + (window.RAHA_I18N && window.RAHA_I18N.lang === 'en' ? 'فارسی' : 'English') + '</button>' + (last ? '' : '<button class="ghost" data-mo="wl-skip" style="padding:0;min-height:36px">رد شدن</button>') + '</div>' +
       '<div class="wl-art">' + s[2] + '</div>' +
       '<div class="col" style="gap:12px;text-align:center"><div style="font-size:24px;font-weight:800;line-height:1.6">' + s[0] + '</div>' +
       '<div class="muted" style="font-size:15px;line-height:2">' + s[1] + '</div></div>' +
@@ -338,6 +338,12 @@ window.RAHA_MORE = function (A) {
     else if (k === 'rate-no') { var bg1 = t.closest('.sheet-bg'); if (bg1) bg1.remove(); feedbackSheet(); }
     else if (k === 'feedback') feedbackSheet();
   });
+  // تغییر زبان از صفحه‌ی خوش‌آمد
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('[data-lang-toggle]') || !window.RAHA_I18N) return;
+    window.RAHA_I18N.set(window.RAHA_I18N.lang === 'en' ? 'fa' : 'en');
+  });
+
   // کلیدهای سوییچ امنیت (جدا از سوییچ‌های تنظیمات عمومی)
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-sw2]'); if (!t) return;

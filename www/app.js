@@ -182,6 +182,17 @@
 
   // ---------- اعلان‌ها ----------
   var LN = plugin('LocalNotifications');
+  var LANG = window.RAHA_I18N ? window.RAHA_I18N.lang : 'fa';
+  // در حالت انگلیسی، متن اعلان‌ها هم ترجمه می‌شود
+  if (LN && LANG === 'en' && typeof Proxy !== 'undefined') {
+    LN = new Proxy(LN, { get: function (t, k) {
+      if (k === 'schedule') return function (o) {
+        (o && o.notifications || []).forEach(function (x) { x.title = window.RAHA_I18N.tr(x.title || ''); x.body = window.RAHA_I18N.tr(x.body || ''); });
+        return t.schedule(o);
+      };
+      var v = t[k]; return typeof v === 'function' ? v.bind(t) : v;
+    } });
+  }
   var MS_ID = 100, DAILY_ID = 200, BACKUP_ID = 300;
   var MS_BODY = [
     '۲۰ دقیقه گذشت؛ ضربان قلب و فشار خون شما پایین آمده است.',
@@ -924,6 +935,7 @@
       setRow('واحد پول', '', '<div class="seg"><button class="' + (st.currency === 'toman' ? 'on' : '') + '" data-cur="toman">تومان</button><button class="' + (st.currency === 'rial' ? 'on' : '') + '" data-cur="rial">ریال</button></div>') +
       setRow('لرزش در تمرین تنفس', '', sw('vibrate', st.vibrate)) +
       (API.settingsTheme ? API.settingsTheme() : '') +
+      setRow('زبان / Language', '', '<div class="seg"><button class="' + (LANG === 'en' ? '' : 'on') + '" data-lang="fa">فارسی</button><button class="' + (LANG === 'en' ? 'on' : '') + '" data-lang="en">English</button></div>') +
       '</div>' +
       (API.settingsExtra ? API.settingsExtra() : '') +
 
@@ -1142,6 +1154,7 @@
       } else render();
       return;
     }
+    if (t.hasAttribute('data-lang')) { if (t.getAttribute('data-lang') !== LANG && window.RAHA_I18N) window.RAHA_I18N.set(t.getAttribute('data-lang')); return; }
     if (t.hasAttribute('data-cur')) { S.set.currency = t.getAttribute('data-cur'); save(); syncWidget(); render(); return; }
     if (t.hasAttribute('data-url')) {
       var u = t.getAttribute('data-url');

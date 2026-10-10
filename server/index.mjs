@@ -570,7 +570,7 @@ const routes = {
       r = await fetch(base.replace(/\/+$/, '') + '/chat/completions', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages: [{ role: 'system', content: COACH_PROMPT + (ctx ? '\n\nوضعیت کاربر: ' + ctx : '') }, ...msgs], max_tokens: 700, temperature: 0.6 }),
+        body: JSON.stringify({ model, messages: [{ role: 'system', content: COACH_PROMPT + (ctx ? '\n\nوضعیت کاربر: ' + ctx : '') + (c.lang === 'en' ? '\n\nThe user is using the app in English: reply in simple, warm English.' : '') }, ...msgs], max_tokens: 700, temperature: 0.6 }),
         signal: AbortSignal.timeout(45000),
       });
     } catch { fail(502, 'دستیار الان در دسترس نیست؛ کمی بعد دوباره امتحان کنید'); }

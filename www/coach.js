@@ -39,7 +39,8 @@ window.RAHA_COACH = function (A) {
       slips7: S.slips.filter(function (x) { return x.t > now - 7 * DAY; }).length,
       cravings7: S.cravings.filter(function (c) { return (typeof c === 'number' ? c : c.t) > now - 7 * DAY; }).length,
       triggers: (S.triggers || []).slice(0, 5).map(function (g) { return A.TRIGGERS[g][0]; }),
-      ftnd: S.ftnd ? S.ftnd.score : null
+      ftnd: S.ftnd ? S.ftnd.score : null,
+      lang: window.RAHA_I18N && window.RAHA_I18N.lang === 'en' ? 'en' : 'fa'
     };
   }
 
