@@ -339,7 +339,9 @@
     runLeave();
     var full = route();
     if (API.lockView) { var lv = API.lockView(); if (lv) { $('#app').innerHTML = lv; if (API.lockAfter) API.lockAfter(); return; } }
-    if (!S.ready && !/^(setup|welcome|ftnd)$/.test(full)) { go(S.onboarded || !VIEWS.welcome ? 'setup' : 'welcome'); return; }
+    // حالت «حامی»: کسی که خودش سیگار نمی‌کشد و فقط از بخش «با هم» استفاده می‌کند
+    if (!S.ready && S.mode === 'supporter' && !/^(setup|welcome|ftnd|together|privacy|settings|coach)$/.test(full)) { go('together'); return; }
+    if (!S.ready && S.mode !== 'supporter' && !/^(setup|welcome|ftnd)$/.test(full)) { go(S.onboarded || !VIEWS.welcome ? 'setup' : 'welcome'); return; }
     if (S.ready && full === 'welcome') { go('home'); return; }
     var parts = full.split('/'), r = parts[0], arg = parts.length > 1 ? decodeURIComponent(parts.slice(1).join('/')) : undefined;
     if (!VIEWS[r]) r = 'home';
@@ -1055,7 +1057,7 @@
     var np = { c: costPerCig(), h: S.hkPrice || 0 };
     if (priceMode === 'fix') S.prices = [{ t: 0, c: np.c, h: np.h }];
     else if (priceMode === 'new') S.prices.push({ t: Date.now(), c: np.c, h: np.h });
-    var first = !S.ready; S.ready = true; S.seenMs = -1; save(); draft = null;
+    var first = !S.ready; S.ready = true; S.seenMs = -1; if (S.mode === 'supporter') S.mode = null; save(); draft = null;
     reschedule(first); syncWidget();
     if (first) go('home'); else { toast('ذخیره شد'); go('settings'); }
   }
@@ -1092,6 +1094,7 @@
         if (t < S.quitAt) { toast('این زمان قبل از روز ترک است'); return; }
         var rec = { t: t, n: n, g: g, note: bg.querySelector('#sl-note').value.trim().slice(0, 500) }; if (k === 'h') rec.k = 'h';
         S.slips.push(rec);
+        if (API.onSlip) { try { API.onSlip(rec); } catch (x) {} }
         save(); reschedule(false); syncWidget(); slipCheckins(); bg.remove();
         var st = stats();
         if (route() !== 'home') go('home'); else render();
@@ -1338,6 +1341,7 @@
   if (window.RAHA_STATS) { try { window.RAHA_STATS(API); } catch (e) { console.error(e); } }
   if (window.RAHA_HEART) { try { window.RAHA_HEART(API); } catch (e) { console.error(e); } }
   if (window.RAHA_CARE) { try { window.RAHA_CARE(API); } catch (e) { console.error(e); } }
+  if (window.RAHA_COACH) { try { window.RAHA_COACH(API); } catch (e) { console.error(e); } }
 
   render();
 

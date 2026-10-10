@@ -72,8 +72,12 @@ if (!manifest.includes('.RahaFriendsJob"')) {
     </application>`);
   console.log('manifest: friends job service added');
 }
-for (const perm of ['android.permission.USE_BIOMETRIC', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS']) {
+for (const perm of ['android.permission.USE_BIOMETRIC', 'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS', 'android.permission.CAMERA']) {
   if (!manifest.includes(perm)) manifest = manifest.replace('</manifest>', `    <uses-permission android:name="${perm}" />\n</manifest>`);
+}
+// دوربین و میکروفون اختیاری‌اند؛ گوشی‌های بدون دوربین هم بتوانند اپ را نصب کنند
+for (const feat of ['android.hardware.camera', 'android.hardware.camera.autofocus', 'android.hardware.microphone']) {
+  if (!manifest.includes(`"${feat}"`)) manifest = manifest.replace('</manifest>', `    <uses-feature android:name="${feat}" android:required="false" />\n</manifest>`);
 }
 if (!manifest.includes('android.permission.RECEIVE_BOOT_COMPLETED')) {
   manifest = manifest.replace('</manifest>', '    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n</manifest>');

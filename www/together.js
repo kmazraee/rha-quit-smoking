@@ -16,6 +16,7 @@ window.RAHA_TOGETHER = function (A) {
     'الان بهت زنگ می‌زنم.',
     'ادامه بده، داری عالی پیش میری.'
   ];
+  var QR_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h7v-4"/></svg>';
   var USERS = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 20a6.5 6.5 0 0 0-3-5.5"/></svg>';
   var AVATAR_COLORS = ['#1C7A52', '#1F5F8B', '#8A5A0E', '#5B3E96', '#9B4A2C', '#2E6B6B'];
 
@@ -25,6 +26,8 @@ window.RAHA_TOGETHER = function (A) {
   if (typeof T.shareMoney !== 'boolean') T.shareMoney = true;
   T.seen = T.seen || 0; T.alerted = T.alerted || 0;
   if (!Array.isArray(T.friends)) T.friends = [];
+  if (!Array.isArray(T.groups)) T.groups = [];
+  function supporterMode() { return S.mode === 'supporter' || T.role === 'supporter'; }
   var server = '';           // آدرس سرور از www/config.json
   var feed = null;           // آخرین رویدادها برای نمایش در صفحه
   var unread = 0;
@@ -57,7 +60,7 @@ window.RAHA_TOGETHER = function (A) {
   }
   function forget() {
     var NF = native(); if (NF) { try { NF.disable().catch(function () {}); } catch (e) {} }
-    S.together = T = { shareMoney: T.shareMoney, seen: 0, alerted: 0, friends: [] };
+    S.together = T = { shareMoney: T.shareMoney, seen: 0, alerted: 0, friends: [], groups: [] };
     feed = null; unread = 0; recentSos = []; save(); stopPolling();
   }
 
@@ -89,7 +92,10 @@ window.RAHA_TOGETHER = function (A) {
       streak: A.pledgeStreak ? A.pledgeStreak() : 0,
       beaten: (S.cravings || []).length,
       badges: A.badgeCount ? A.badgeCount()[0] : 0,
-      method: S.method || 0
+      method: S.method || 0,
+      kind: S.product === 'hookah' ? 1 : S.product === 'both' ? 2 : 0,
+      hk: st.hk || 0,
+      slips: A.slipCigs ? A.slipCigs() : 0
     };
   }
   function pushSnapshot() {
@@ -186,7 +192,7 @@ window.RAHA_TOGETHER = function (A) {
     if (!s) return null;
     if (s.quitAt > now) return { future: true, left: Math.ceil((s.quitAt - now) / 86400000) };
     var d = (now - s.quitAt) / 86400000;
-    return { days: Math.floor(d), hours: Math.floor((d - Math.floor(d)) * 24), notSmoked: Math.floor(d * (s.cpd || 0)) };
+    return { days: Math.floor(d), hours: Math.floor((d - Math.floor(d)) * 24), notSmoked: Math.max(0, Math.floor(d * (s.cpd || 0)) - (s.slips || 0)), hookah: s.kind === 1 };
   }
   function moodChip(s) {
     if (!s || typeof s.mood !== 'number' || !s.moodAt || A.dayKey(s.moodAt) !== A.dayKey(Date.now())) return '<span class="tg-chip">حال امروز ثبت نشده</span>';
@@ -204,6 +210,7 @@ window.RAHA_TOGETHER = function (A) {
   }
 
   A.friendsServer = function () { return server; };
+  A.togetherToken = function () { return T.token || ''; };
 
   // ---------- آیکن سربرگ و کارت صفحه‌ی خانه ----------
   A.togetherIcon = function () {
@@ -223,6 +230,7 @@ window.RAHA_TOGETHER = function (A) {
     var rows = T.friends.slice(0, 3).map(function (f) {
       var s = sosFrom(f.id), fd = friendDays(f.snapshot);
       var right = s ? '<span class="tg-sos-pill">کمک خواسته</span>'
+        : f.role === 'supporter' ? '<span class="tg-role">حامی</span>'
         : fd ? (fd.future ? '<span class="muted small">' + num(fd.left) + ' روز تا ترک</span>' : '<b>' + num(fd.days) + '</b><span class="muted small"> روز</span>') : '';
       return '<div class="tg-row">' + avatar(f.id, f.name, 34) + '<div style="flex:1;font-weight:700;font-size:14px">' + esc(f.name) + '</div><div>' + right + '</div></div>';
     }).join('');
@@ -230,7 +238,7 @@ window.RAHA_TOGETHER = function (A) {
       (unread ? '<span class="tg-badge" style="position:static;display:inline-flex">' + fa(Math.min(unread, 9)) + '</span> پیام تازه' : num(T.friends.length) + ' دوست') + '</div></div>' + rows + '</a>';
   };
   A.togetherSosButton = function () {
-    if (!joined() || !T.friends.length) return '';
+    if (!joined() || (!T.friends.length && !T.groups.length)) return '';
     return '<button class="alt" data-tg="sos" style="border-color:#E5484D">' + USERS + 'به دوستانم خبر بده</button>';
   };
   A.onReset = function () {
@@ -246,17 +254,19 @@ window.RAHA_TOGETHER = function (A) {
         '<div class="h2">به‌زودی</div><div class="muted" style="line-height:2">این بخش به‌زودی فعال می‌شود. آن‌وقت می‌توانید با دوستانتان با هم ترک کنید، پیشرفت هم را ببینید و وقتی حالتان بد است به هم خبر بدهید.</div></div>' +
         '</div>' + A.nav('home');
     }
+    if (supporterMode()) head = '<div class="title-bar">' + (S.ready ? '<a class="icon-btn" href="#home" aria-label="بازگشت">' + I.back + '</a>' : '<a class="icon-btn" href="#settings" aria-label="تنظیمات">' + I.gear + '</a>') + '<div class="h1">' + (S.ready ? 'با هم ترک کنیم' : 'حامی') + '</div></div>';
     if (!T.token) return joinView(head);
 
-    var friends = T.friends;
-    var sosBtn = '<button class="tg-sos-btn" data-tg="sos"' + (friends.length ? '' : ' disabled') + '>' +
-      '<b>حالم بده، کمکم کنید</b><span>' + (friends.length ? 'به ' + num(friends.length) + ' دوستتان خبر می‌دهیم' : 'اول یک دوست اضافه کنید') + '</span></button>';
-    var me = '<div class="card tg-me"><div class="row"><div class="col" style="gap:2px"><div class="muted small">کد دوستی شما</div>' +
+    var friends = T.friends, sup = T.role === 'supporter';
+    var sosBtn = sup ? '' : '<button class="tg-sos-btn" data-tg="sos"' + (friends.length || T.groups.length ? '' : ' disabled') + '>' +
+      '<b>حالم بده، کمکم کنید</b><span>' + (friends.length ? 'به ' + num(friends.length) + ' دوستتان خبر می‌دهیم' : T.groups.length ? 'به هم‌گروه‌هایتان خبر می‌دهیم' : 'اول یک دوست اضافه کنید') + '</span></button>';
+    var me = '<div class="card tg-me"><div class="row"><div class="col" style="gap:2px"><div class="muted small">کد دوستی شما' + (sup ? ' · <span class="tg-role">حامی</span>' : '') + '</div>' +
       '<div class="tg-code" dir="ltr">' + fa(T.code || '') + '</div></div>' + avatar(T.id || 'me', T.name, 48) + '</div>' +
-      '<div class="grid2"><button class="chip on" data-tg="share">فرستادن برای دوست</button><button class="chip" data-tg="copy">کپی کد</button></div></div>';
-    var add = '<div class="card"><div class="h2">افزودن دوست</div>' +
-      '<div style="display:flex;gap:8px"><input class="input" id="tg-code" inputmode="numeric" maxlength="11" placeholder="کد شش‌رقمی دوستتان" style="flex:1;letter-spacing:2px;text-align:center" aria-label="کد دوستی">' +
-      '<button class="chip on" data-tg="add" style="min-width:84px">افزودن</button></div></div>';
+      '<div class="grid3"><button class="chip on" data-tg="share">فرستادن</button><button class="chip" data-tg="copy">کپی کد</button><button class="chip" data-tg="qr" aria-label="نمایش کد QR">' + QR_ICON + ' QR</button></div></div>';
+    var add = '<div class="card"><div class="h2">' + (sup ? 'افزودن کسی که ترک می‌کند' : 'افزودن دوست') + '</div>' +
+      '<div style="display:flex;gap:8px"><input class="input" id="tg-code" inputmode="numeric" maxlength="11" placeholder="کد شش‌رقمی" style="flex:1;letter-spacing:2px;text-align:center" aria-label="کد دوستی">' +
+      '<button class="chip on" data-tg="add" style="min-width:76px">افزودن</button><button class="chip" data-tg="scan" aria-label="اسکن کد QR" style="min-width:52px">' + QR_ICON + '</button></div></div>' +
+      (sup && !S.ready ? '<div class="card" style="background:var(--green-tint);gap:6px"><div class="st" style="color:var(--green-dark)">شما حامی هستید</div><div class="small" style="line-height:2">وقتی عزیزتان کمک بخواهد، لغزش داشته باشد (اگر خودش بخواهد) یا به روز مهمی برسد، اینجا و با اعلان خبردار می‌شوید. با یک پیام دلگرمی کوتاه کنارش باشید؛ سرزنش، ترک را سخت‌تر می‌کند.</div></div>' : '');
     var list = friends.length
       ? friends.map(friendCard).join('')
       : '<div class="card" style="text-align:center;gap:8px;padding:22px"><div class="h2">هنوز دوستی اضافه نکرده‌اید</div><div class="muted small" style="line-height:1.9">کد خودتان را برای دوستی که می‌خواهد ترک کند بفرستید، یا کد او را بالا وارد کنید.</div></div>';
@@ -265,17 +275,22 @@ window.RAHA_TOGETHER = function (A) {
       '<div class="field"><label for="tg-name">نام نمایشی</label><div style="display:flex;gap:8px"><input class="input" id="tg-name" maxlength="24" value="' + esc(T.name || '') + '" style="flex:1"><button class="chip" data-tg="rename">ذخیره</button></div></div>' +
       '<div class="srow" style="border:none;padding:0"><div class="col" style="flex:1"><div class="st">پس‌اندازم را به دوستانم نشان بده</div></div>' +
       '<button class="switch' + (T.shareMoney ? ' on' : '') + '" role="switch" aria-checked="' + T.shareMoney + '" data-tg="money"><span></span></button></div>' +
+      (sup ? '' : '<div class="srow" style="border:none;padding:0"><div class="col" style="flex:1"><div class="st">خبر لغزش به حامی‌هایم</div><div class="muted small" style="line-height:1.8">وقتی لغزش ثبت می‌کنید، فقط دوستانی که «حامی» هستند خبردار می‌شوند</div></div>' +
+      '<button class="switch' + (T.slipShare ? ' on' : '') + '" role="switch" aria-checked="' + !!T.slipShare + '" data-tg="slipshare"><span></span></button></div>') +
       '<button class="chip" data-tg="newcode">ساختن کد دوستی تازه</button>' +
       '<div class="muted small" style="line-height:1.9">با کد تازه، کد قبلی دیگر کار نمی‌کند. دوستانی که تا الان اضافه کرده‌اید می‌مانند.</div>' +
       '<button class="ghost" data-tg="leave" style="color:#9B2C2C;font-weight:700">خروج و پاک کردن اطلاعاتم از سرور</button></div></details>';
     return '<div class="screen">' + head + sosBtn + me + add +
       '<div class="row"><div class="h2">دوستان</div><button class="ghost small" data-tg="refresh" style="padding:0;min-height:32px">به‌روزرسانی</button></div>' +
       '<div id="tg-friends" class="col" style="gap:12px">' + list + '</div>' +
+      groupsView() +
       '<div class="h2">پیام‌ها و خبرها</div><div id="tg-feed">' + feedHtml + '</div>' + settings +
-      '</div>' + A.nav('home');
+      (supporterMode() && !S.ready ? '<a class="chip" href="#setup" style="display:flex;align-items:center;justify-content:center;min-height:46px">خودم هم می‌خواهم ترک کنم</a>' : '') +
+      '</div>' + (supporterMode() && !S.ready ? '' : A.nav('home'));
   };
 
   function joinView(head) {
+    var sup = S.mode === 'supporter';
     return '<div class="screen">' + head +
       '<div class="card tg-hero"><div class="tg-ic big">' + USERS + '</div><div class="h2">ترک سیگار با یک دوست آسان‌تر است</div>' +
       '<ul class="tg-list"><li>پیشرفت هم را هر لحظه ببینید: روزهای بدون سیگار، پس‌انداز و حال روزانه</li>' +
@@ -285,20 +300,27 @@ window.RAHA_TOGETHER = function (A) {
       '<input class="input" id="tg-join-name" maxlength="24" value="' + esc(S.name || '') + '" placeholder="مثلاً سارا"></div>' +
       '<div class="srow" style="border:none;padding:0"><div class="col" style="flex:1"><div class="st">پس‌اندازم را به دوستانم نشان بده</div></div>' +
       '<button class="switch' + (T.shareMoney ? ' on' : '') + '" role="switch" aria-checked="' + T.shareMoney + '" data-tg="money"><span></span></button></div>' +
+      (S.ready ? '' : '<div class="srow" style="border:none;padding:0"><div class="col" style="flex:1"><div class="st">من حامی هستم</div><div class="muted small">خودم سیگار نمی‌کشم؛ فقط پشتیبان کسی هستم که ترک می‌کند</div></div><span class="tg-role">حامی</span></div>') +
       '<button class="primary" data-tg="join">شروع</button></div>' +
       '<div class="card" style="background:var(--green-tint);gap:6px"><div class="st" style="color:var(--green-dark)">چه چیزی با دوستانم به اشتراک گذاشته می‌شود؟</div>' +
       '<div class="small" style="line-height:2">نام نمایشی، تاریخ ترک، تعداد نخ روزانه، نخ‌های نکشیده، پس‌انداز (اگر بخواهید)، حال امروز، روزهای پیاپی تعهد و تعداد هوس‌های شکست‌خورده. ' +
       'این‌ها روی سرور رها نگه‌داری می‌شود و فقط دوستانی که کد شما را دارند می‌بینند. شماره تلفن و ایمیل لازم نیست. هر وقت بخواهید، با «خروج و پاک کردن اطلاعاتم» همه پاک می‌شود. دفترچه، یادداشت‌ها و بقیه‌ی اطلاعاتتان روی گوشی می‌ماند.</div></div>' +
-      '</div>' + A.nav('home');
+      '</div>' + (sup && !S.ready ? '' : A.nav('home'));
   }
 
   function friendCard(f) {
+    if (f.role === 'supporter') {
+      return '<div class="card tg-friend"><div class="row" style="align-items:center;gap:12px">' + avatar(f.id, f.name, 46) +
+        '<div class="col" style="flex:1;gap:2px"><div style="font-size:16px;font-weight:800">' + esc(f.name) + ' <span class="tg-role">حامی</span></div><div class="muted small">' + presence(f.lastSeen) + '</div></div>' +
+        '<button class="icon-btn" data-tg-menu="' + esc(f.id) + '" aria-label="گزینه‌ها" style="background:transparent">⋯</button></div>' +
+        '<div class="row" style="gap:8px"><span class="tg-chip">کنار شماست و خبرهای مهمتان را می‌گیرد</span><button class="chip on" data-tg-cheer="' + esc(f.id) + '">پیام</button></div></div>';
+    }
     var s = f.snapshot, fd = friendDays(s), sos = sosFrom(f.id);
     var big = !fd ? '<div class="muted">هنوز اطلاعاتی نفرستاده</div>'
       : fd.future ? '<div class="tg-days"><b>' + num(fd.left) + '</b> روز تا روز ترک</div>'
-      : '<div class="tg-days"><b>' + num(fd.days) + '</b> روز' + (fd.hours ? ' و ' + num(fd.hours) + ' ساعت' : '') + ' بدون سیگار</div>';
+      : '<div class="tg-days"><b>' + num(fd.days) + '</b> روز' + (fd.hours ? ' و ' + num(fd.hours) + ' ساعت' : '') + ' بدون ' + (fd.hookah ? 'قلیان' : 'سیگار') + '</div>';
     var stats = fd && !fd.future ? '<div class="tg-stats">' +
-      '<div><b>' + num(fd.notSmoked) + '</b><span>نخ نکشیده</span></div>' +
+      (fd.hookah ? '<div><b>' + num(s.hk || 0) + '</b><span>وعده قلیان نکشیده</span></div>' : '<div><b>' + num(fd.notSmoked) + '</b><span>نخ نکشیده</span></div>') +
       (s.money !== null && s.money !== undefined ? '<div><b>' + A.shortMoney(s.money) + '</b><span>' + A.cur() + ' پس‌انداز</span></div>' : '') +
       '<div><b>' + num(s.streak || 0) + '</b><span>روز تعهد پیاپی</span></div>' +
       '<div><b>' + num(s.beaten || 0) + '</b><span>هوس شکست‌خورده</span></div></div>' : '';
@@ -314,9 +336,9 @@ window.RAHA_TOGETHER = function (A) {
   function feedView() {
     if (!feed) return '<div class="muted small">در حال دریافت…</div>';
     if (!feed.length) return '<div class="muted small">هنوز پیامی نیامده است.</div>';
-    var IC = { sos: '!', cheer: '♥', friend: '+', milestone: '★' };
+    var IC = { sos: '!', cheer: '♥', friend: '+', milestone: '★', slip: '↺', group: '+' };
     return '<div class="card" style="padding:4px 16px;gap:0">' + feed.slice().reverse().map(function (e) {
-      var canReply = e.from && T.friends.some(function (f) { return f.id === e.from; }) && (e.type === 'sos' || e.type === 'milestone' || e.type === 'cheer');
+      var canReply = e.from && T.friends.some(function (f) { return f.id === e.from; }) && (e.type === 'sos' || e.type === 'milestone' || e.type === 'cheer' || e.type === 'slip');
       return '<div class="tg-ev ev-' + e.type + '"><span class="tg-ev-ic">' + (IC[e.type] || '•') + '</span><div class="col" style="flex:1;gap:2px">' +
         '<div style="font-size:14px;font-weight:700">' + esc(e.title) + '</div><div class="small" style="line-height:1.8">' + esc(e.body) + '</div>' +
         '<div class="muted small">' + ago(e.at) + '</div></div>' +
@@ -328,6 +350,7 @@ window.RAHA_TOGETHER = function (A) {
     if (!joined()) return Promise.resolve();
     return Promise.all([
       api('GET', '/api/friends').then(function (r) { T.friends = r.friends || []; save(); }),
+      api('GET', '/api/groups').then(function (r) { T.groups = r.groups || []; save(); }).catch(function () {}),
       api('GET', '/api/inbox?since=0').then(function (r) {
         feed = r.events || [];
         noteSos(feed);
@@ -349,6 +372,7 @@ window.RAHA_TOGETHER = function (A) {
   function redrawLists() {
     var fl = $('#tg-friends'), fe = $('#tg-feed');
     if (fl) fl.innerHTML = T.friends.length ? T.friends.map(friendCard).join('') : fl.innerHTML;
+    var gl = $('#tg-groups'); if (gl) gl.outerHTML = groupsView();
     if (fe) fe.innerHTML = feedView();
   }
 
@@ -382,13 +406,15 @@ window.RAHA_TOGETHER = function (A) {
     });
   }
   function sendSos() {
-    if (!T.friends.length) { A.toast('اول یک دوست اضافه کنید'); return; }
-    A.sheet('<div class="h2">به دوستانتان خبر بدهیم؟</div><div class="muted" style="line-height:2">به ' + num(T.friends.length) + ' دوستتان پیام می‌رسد که حالتان خوب نیست و به دلگرمی نیاز دارید.</div>' +
+    if (!T.friends.length && !T.groups.length) { A.toast('اول یک دوست اضافه کنید'); return; }
+    A.sheet('<div class="h2">به دوستانتان خبر بدهیم؟</div><div class="muted" style="line-height:2">' + (T.friends.length ? 'به ' + num(T.friends.length) + ' دوستتان' : 'به هم‌گروه‌هایتان') + ' پیام می‌رسد که حالتان خوب نیست و به دلگرمی نیاز دارید.</div>' +
+      (T.groups.length ? '<label class="srow" style="padding:0;gap:10px"><input type="checkbox" id="tg-sos-g" ' + (T.friends.length ? '' : 'checked') + ' style="width:22px;height:22px"><span class="small" style="flex:1">اعضای گروه‌هایم هم خبردار شوند</span></label>' : '') +
       '<button class="primary" id="tg-sos-go" style="background:#C0533A">بله، خبر بده</button><button class="ghost" data-close>انصراف</button>', function (bg) {
       var btn = bg.querySelector('#tg-sos-go');
       btn.onclick = function () {
         btn.disabled = true;
-        api('POST', '/api/sos').then(function (r) {
+        var gch = bg.querySelector('#tg-sos-g');
+        api('POST', '/api/sos', { groups: !!(gch && gch.checked) }).then(function (r) {
           bg.remove();
           A.sheet('<div class="h2" style="text-align:center">به ' + num(r.notified) + ' دوست خبر دادیم</div><div class="muted" style="text-align:center;line-height:2">تا جواب بدهند، با هم نفس بکشیم. هوس معمولاً چند دقیقه بیشتر نمی‌ماند.</div>' +
             '<a class="primary" href="#sos" style="display:flex;align-items:center;justify-content:center">تمرین تنفس</a><button class="ghost" data-close>بستن</button>');
@@ -401,21 +427,154 @@ window.RAHA_TOGETHER = function (A) {
     name = name.trim();
     if (!name) { A.toast('یک نام بنویسید تا دوستانتان شما را بشناسند'); return; }
     var btn = document.querySelector('[data-tg="join"]'); if (btn) btn.disabled = true;
-    api('POST', '/api/register', { name: name }).then(function (r) {
-      T.token = r.token; T.id = r.id; T.code = r.code; T.name = r.name; T.seen = 0; T.alerted = 0; T.friends = [];
+    api('POST', '/api/register', { name: name, role: S.mode === 'supporter' && !S.ready ? 'supporter' : 'quitter' }).then(function (r) {
+      T.token = r.token; T.id = r.id; T.code = r.code; T.name = r.name; T.role = r.role || 'quitter'; T.seen = 0; T.alerted = 0; T.friends = []; T.groups = [];
       save(); configureNative(); startPolling();
       return pushSnapshot();
     }).then(function () { A.toast('به «با هم» خوش آمدید'); A.render(); })
       .catch(function (e) { if (btn) btn.disabled = false; A.toast(e.message); });
   }
-  function addFriend() {
-    var inp = $('#tg-code'), code = A.toEn(inp ? inp.value : '');
+  function addFriend(fromCode) {
+    var inp = $('#tg-code'), code = fromCode || A.toEn(inp ? inp.value : '');
+    if (code.length === 7) { joinGroup(code); return; }
     if (code.length !== 6) { A.toast('کد دوستی شش رقم است'); return; }
     api('POST', '/api/friends', { code: code }).then(function (r) {
       T.friends = T.friends.filter(function (f) { return f.id !== r.friend.id; }).concat([r.friend]); save();
       A.toast(r.friend.name + ' به دوستان شما اضافه شد'); if (inp) inp.value = ''; A.render();
     }).catch(function (e) { A.toast(e.message); });
   }
+
+  // ---------- گروه‌ها ----------
+  var GROUP_GOALS = [30, 100, 250, 500, 1000, 2500, 5000, 10000, 25000];
+  function groupDays(g) {
+    return g.members.reduce(function (a, m) { var fd = m.role === 'supporter' ? null : friendDays(m.snapshot); return a + (fd && !fd.future ? fd.days : 0); }, 0);
+  }
+  function groupsView() {
+    if (!joined()) return '';
+    var cards = T.groups.map(function (g) {
+      var total = groupDays(g), goal = GROUP_GOALS.filter(function (x) { return x > total; })[0] || total || 1;
+      var rows = g.members.slice(0, 8).map(function (m) {
+        var fd = m.role === 'supporter' ? null : friendDays(m.snapshot), sos = sosFrom(m.id);
+        var right = sos ? '<span class="tg-sos-pill">کمک خواسته</span>' : m.role === 'supporter' ? '<span class="tg-role">حامی</span>' : fd ? (fd.future ? '<span class="muted small">' + num(fd.left) + ' روز تا ترک</span>' : '<b>' + num(fd.days) + '</b><span class="muted small"> روز</span>') : '';
+        return '<div class="tg-row">' + avatar(m.id, m.name, 30) + '<div style="flex:1;font-weight:700;font-size:13px">' + esc(m.name) + (m.id === T.id ? ' (شما)' : '') + '</div><div>' + right + '</div></div>';
+      }).join('') + (g.members.length > 8 ? '<div class="muted small">و ' + num(g.members.length - 8) + ' نفر دیگر</div>' : '');
+      return '<div class="card tg-group"><div class="row"><div class="col" style="gap:2px"><div class="h2">' + esc(g.name) + '</div><div class="muted small">' + num(g.members.length) + ' عضو · کد گروه <span dir="ltr">' + fa(g.code) + '</span></div></div>' +
+        '<button class="icon-btn" data-tg="g-qr" data-id="' + g.id + '" aria-label="کد QR گروه" style="background:transparent">' + QR_ICON + '</button></div>' +
+        '<div class="col" style="gap:6px"><div class="row small"><span>چالش گروهی: روزهای پاک جمعی</span><b>' + num(total) + ' از ' + num(goal) + '</b></div><div class="bar"><div style="width:' + Math.min(100, total / goal * 100) + '%"></div></div></div>' +
+        rows + '<div class="grid3"><button class="chip on" data-tg="g-cheer" data-id="' + g.id + '">دلگرمی</button><button class="chip" data-tg="g-share" data-id="' + g.id + '">دعوت</button><button class="chip" data-tg="g-leave" data-id="' + g.id + '" style="color:#9B2C2C">خروج</button></div></div>';
+    }).join('');
+    return '<div id="tg-groups" class="col" style="gap:12px"><div class="h2">گروه‌ها</div>' + cards +
+      '<div class="card"><div class="muted small" style="line-height:1.9">با همکاران، هم‌کلاسی‌ها یا خانواده یک گروه ترک بسازید (تا ' + fa(50) + ' نفر). همه‌ی اعضا پیشرفت هم را می‌بینند و روزهای پاک جمعی شمرده می‌شود.</div>' +
+      '<div style="display:flex;gap:8px"><input class="input" id="tg-gname" maxlength="24" placeholder="نام گروه تازه" style="flex:1"><button class="chip on" data-tg="g-new" style="min-width:76px">ساختن</button></div>' +
+      '<div style="display:flex;gap:8px"><input class="input" id="tg-gcode" inputmode="numeric" maxlength="12" placeholder="کد هفت‌رقمی گروه" style="flex:1;letter-spacing:2px;text-align:center"><button class="chip" data-tg="g-join" style="min-width:76px">پیوستن</button></div></div></div>';
+  }
+  function newGroup() {
+    var n = ($('#tg-gname') || {}).value || '';
+    if (!n.trim()) { A.toast('یک نام برای گروه بنویسید'); return; }
+    api('POST', '/api/groups', { name: n.trim() }).then(function (r) { T.groups.push(r.group); save(); A.toast('گروه ساخته شد؛ کدش را برای بقیه بفرستید'); A.render(); }).catch(function (e) { A.toast(e.message); });
+  }
+  function joinGroup(code) {
+    if (String(code).length !== 7) { A.toast('کد گروه هفت رقم است'); return; }
+    api('POST', '/api/groups/join', { code: code }).then(function (r) {
+      T.groups = T.groups.filter(function (g) { return g.id !== r.group.id; }).concat([r.group]); save();
+      A.toast('به گروه «' + r.group.name + '» پیوستید'); A.render();
+    }).catch(function (e) { A.toast(e.message); });
+  }
+  function shareGroup(g) {
+    var text = 'به گروه ترک سیگار «' + g.name + '» در اپ رها بپیوند!\nکد گروه: ' + fa(g.code) + '\nدر رها، بخش «با هم» را باز کن و کد را در «پیوستن» وارد کن.';
+    var SH = A.plugin('Share');
+    if (A.IS_NATIVE && SH) { SH.share({ title: 'دعوت به گروه', text: text, dialogTitle: 'فرستادن دعوت' }).catch(function () {}); return; }
+    if (navigator.share) { navigator.share({ text: text }).catch(function () {}); return; }
+    A.copy(text);
+  }
+  function groupCheer(id) {
+    var g = T.groups.filter(function (x) { return x.id === id; })[0]; if (!g) return;
+    A.sheet('<div class="h2">پیام دلگرمی به همه‌ی «' + esc(g.name) + '»</div><div class="col" style="gap:8px">' +
+      CHEERS.map(function (c, i) { return '<button class="tg-cheer-opt" data-k="' + i + '">' + c + '</button>'; }).join('') + '</div><button class="ghost" data-close>انصراف</button>', function (bg) {
+      bg.querySelectorAll('[data-k]').forEach(function (b) {
+        b.onclick = function () {
+          b.disabled = true;
+          api('POST', '/api/groups/' + id + '/cheer', { kind: +b.getAttribute('data-k') }).then(function (r) { bg.remove(); A.toast('برای ' + num(r.notified) + ' نفر فرستاده شد'); })
+            .catch(function (e) { b.disabled = false; A.toast(e.message); });
+        };
+      });
+    });
+  }
+  function leaveGroup(id) {
+    var g = T.groups.filter(function (x) { return x.id === id; })[0]; if (!g) return;
+    A.sheet('<div class="h2">خروج از «' + esc(g.name) + '»؟</div><div class="muted" style="line-height:2">دیگر پیشرفت اعضا را نمی‌بینید و آن‌ها هم شما را نمی‌بینند.</div>' +
+      '<button class="primary" id="tg-gl" style="background:#9B2C2C">خروج</button><button class="ghost" data-close>انصراف</button>', function (bg) {
+      bg.querySelector('#tg-gl').onclick = function () {
+        api('DELETE', '/api/groups/' + id).then(function () { T.groups = T.groups.filter(function (x) { return x.id !== id; }); save(); bg.remove(); A.render(); }).catch(function (e) { A.toast(e.message); });
+      };
+    });
+  }
+
+  // ---------- کد QR ----------
+  var loaded = {};
+  function loadScript(src) {
+    if (!loaded[src]) loaded[src] = new Promise(function (res, rej) { var sc = document.createElement('script'); sc.src = src; sc.onload = res; sc.onerror = function () { delete loaded[src]; rej(new Error('load')); }; document.head.appendChild(sc); });
+    return loaded[src];
+  }
+  function showQr(text, title, code) {
+    loadScript('lib/qrcode.js').then(function () {
+      var qr = window.qrcode(0, 'M'); qr.addData(text); qr.make();
+      A.sheet('<div class="h2" style="text-align:center">' + esc(title) + '</div><div class="tg-qr"><img src="' + qr.createDataURL(8, 16) + '" alt="کد QR"></div>' +
+        '<div class="tg-code" dir="ltr" style="text-align:center">' + code + '</div><div class="muted small" style="text-align:center;line-height:1.9">دوستتان در رها، بخش «با هم»، دکمه‌ی اسکن را بزند و دوربین را روی این کد بگیرد.</div><button class="primary" data-close>بستن</button>');
+    }).catch(function () { A.toast('نمایش QR ممکن نشد'); });
+  }
+  function handleScan(txt) {
+    var m = /RAHA-FRIEND:(\d{6})/.exec(txt), g = /RAHA-GROUP:(\d{7})/.exec(txt), d = A.toEn(txt);
+    if (m) addFriend(m[1]);
+    else if (g) joinGroup(g[1]);
+    else if (d.length === 6 || d.length === 7) addFriend(d);
+    else A.toast('این کد QR مربوط به رها نیست');
+  }
+  function decodeImage(img) {
+    var w = Math.min(800, img.naturalWidth || img.videoWidth || img.width), h = Math.round(w * (img.naturalHeight || img.videoHeight || img.height) / (img.naturalWidth || img.videoWidth || img.width));
+    if (!w || !h) return null;
+    var c = document.createElement('canvas'); c.width = w; c.height = h; var ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+    var r = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' });
+    return r ? r.data : null;
+  }
+  function scanFromFile() {
+    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = function () {
+      var f = inp.files && inp.files[0]; if (!f) return;
+      var url = URL.createObjectURL(f), img = new Image();
+      img.onload = function () { var t = decodeImage(img); URL.revokeObjectURL(url); if (t) handleScan(t); else A.toast('کد QR در این تصویر پیدا نشد'); };
+      img.src = url;
+    };
+    inp.click();
+  }
+  function scanQr() {
+    loadScript('lib/jsQR.js').then(function () {
+      var stream = null, raf = 0, done = false;
+      var bg = A.sheet('<div class="h2" style="text-align:center">کد QR را جلوی دوربین بگیرید</div><div class="tg-scan"><video id="qr-v" playsinline muted></video><i></i></div>' +
+        '<button class="chip" id="qr-file" style="min-height:46px">انتخاب عکس کد از گالری</button><button class="ghost" data-close>بستن</button>', function (b) {
+        b.querySelector('#qr-file').onclick = function () { stop(); b.remove(); scanFromFile(); };
+      });
+      function stop() { done = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); }
+      bg.addEventListener('click', function (e) { if (e.target === bg || e.target.closest('[data-close]')) stop(); });
+      window.addEventListener('hashchange', stop, { once: true });
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { A.toast('دوربین در دسترس نیست؛ از گالری انتخاب کنید'); return; }
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (s) {
+        if (done) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+        stream = s; var v = bg.querySelector('#qr-v'); v.srcObject = s; v.play().catch(function () {});
+        (function tick() {
+          if (done) return;
+          if (v.readyState >= 2) { var t = decodeImage(v); if (t) { stop(); bg.remove(); handleScan(t); return; } }
+          raf = requestAnimationFrame(tick);
+        })();
+      }).catch(function () { A.toast('اجازه‌ی دوربین داده نشد؛ می‌توانید عکس کد را از گالری انتخاب کنید'); });
+    }).catch(function () { A.toast('اسکنر بار نشد'); });
+  }
+
+  // خبر لغزش به حامی‌ها (اگر کاربر روشن کرده باشد)
+  A.onSlip = function (rec) {
+    if (!joined() || !T.slipShare || !T.friends.some(function (f) { return f.role === 'supporter'; })) return;
+    api('POST', '/api/slip', { n: rec.n || 1, kind: rec.k === 'h' ? 'h' : 'c' }).catch(function () {});
+  };
 
   document.addEventListener('click', function (e) {
     var c = e.target.closest('[data-tg-cheer]');
@@ -433,6 +592,15 @@ window.RAHA_TOGETHER = function (A) {
     else if (k === 'share') shareCode();
     else if (k === 'copy') A.copy(T.code);
     else if (k === 'add') addFriend();
+    else if (k === 'qr') showQr('RAHA-FRIEND:' + T.code, 'کد دوستی شما', fa(T.code || ''));
+    else if (k === 'scan') scanQr();
+    else if (k === 'slipshare') { T.slipShare = !T.slipShare; save(); t.classList.toggle('on', T.slipShare); t.setAttribute('aria-checked', T.slipShare); }
+    else if (k === 'g-new') newGroup();
+    else if (k === 'g-join') { var gi = $('#tg-gcode'); joinGroup(A.toEn(gi ? gi.value : '')); }
+    else if (k === 'g-qr') { var gq = T.groups.filter(function (g) { return g.id === t.getAttribute('data-id'); })[0]; if (gq) showQr('RAHA-GROUP:' + gq.code, 'کد گروه «' + gq.name + '»', fa(gq.code)); }
+    else if (k === 'g-share') { var gs = T.groups.filter(function (g) { return g.id === t.getAttribute('data-id'); })[0]; if (gs) shareGroup(gs); }
+    else if (k === 'g-cheer') groupCheer(t.getAttribute('data-id'));
+    else if (k === 'g-leave') leaveGroup(t.getAttribute('data-id'));
     else if (k === 'sos') sendSos();
     else if (k === 'refresh') refresh().then(redrawLists);
     else if (k === 'rename') {

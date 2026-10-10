@@ -1,0 +1,33 @@
+name: استقرار سایت معرفی رها
+
+# فقط با دستور: دکمه‌ی Run workflow در تب Actions، یا فرستادن کد به شاخه‌ی deploy-site
+on:
+  workflow_dispatch:
+  push:
+    branches: [deploy-site]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: ساخت سایت
+        run: node scripts/build-site.mjs
+
+      - name: استقرار در لیارا
+        working-directory: site
+        env:
+          LIARA_API_TOKEN: ${{ secrets.LIARA_API_TOKEN }}
+          LIARA_SITE_APP: ${{ vars.LIARA_SITE_APP }}
+        run: |
+          if [ -z "$LIARA_API_TOKEN" ]; then
+            echo "توکن لیارا (LIARA_API_TOKEN) در Secrets مخزن تعریف نشده است."; exit 1
+          fi
+          APP_ARG=""
+          if [ -n "$LIARA_SITE_APP" ]; then APP_ARG="--app $LIARA_SITE_APP"; fi
+          npx -y @liara/cli@9 deploy --api-token "$LIARA_API_TOKEN" $APP_ARG --platform static --no-app-logs

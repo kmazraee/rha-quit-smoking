@@ -6,6 +6,10 @@
 //   • نگه‌داشتن خلاصه‌ی پیشرفت هر نفر تا دوستانش ببینند
 //   • «حالم بده، کمکم کنید» و پیام‌های دلگرمی آماده
 //   • خبر دادن به دوستان در روزهای مهم (۷ روز، ۳۰ روز، …)
+//   • نقش «حامی» (کسی که خودش سیگار نمی‌کشد و فقط پشتیبان است) و خبر لغزش به حامی‌ها
+//   • گروه‌های ترک با کد گروه و پیام دلگرمی گروهی
+//   • دستیار هوش مصنوعی فارسی (از طریق یک سرویس سازگار با OpenAI، مثل هوش مصنوعی لیارا)
+//   • آماده برای اعلان فوری (پوشه) در آینده
 //
 // بدون هیچ کتابخانه‌ی بیرونی؛ فقط Node.js نسخه‌ی ۲۲.۱۳ یا بالاتر (پایگاه داده‌ی داخلی SQLite).
 import http from 'node:http';
@@ -19,6 +23,8 @@ const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 const DB_FILE = process.env.DB_FILE || path.join(DIR, 'data', 'raha.db');
 const MAX_FRIENDS = 30;
+const MAX_GROUP_MEMBERS = 50;
+const MAX_GROUPS = 5;
 const EVENT_TTL_DAYS = 30;
 
 // ---------- پایگاه داده ----------
@@ -56,6 +62,20 @@ db.exec(`
     at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS events_to ON events (to_user, id);
+  CREATE TABLE IF NOT EXISTS groups (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    created INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS group_members (
+    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    joined INTEGER NOT NULL,
+    PRIMARY KEY (group_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS gm_user ON group_members (user_id);
   CREATE TABLE IF NOT EXISTS feedback (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,
@@ -67,11 +87,34 @@ db.exec(`
   );
 `);
 
+// ستون‌های تازه برای پایگاه داده‌های قدیمی
+const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+if (!userCols.includes('role')) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'quitter'");
+if (!userCols.includes('push_id')) db.exec('ALTER TABLE users ADD COLUMN push_id TEXT');
+
 const q = {
   userByToken: db.prepare('SELECT * FROM users WHERE token_hash = ?'),
   userById: db.prepare('SELECT * FROM users WHERE id = ?'),
   userByCode: db.prepare('SELECT * FROM users WHERE code = ?'),
-  insertUser: db.prepare('INSERT INTO users (id, token_hash, code, name, created, last_seen) VALUES (?, ?, ?, ?, ?, ?)'),
+  insertUser: db.prepare('INSERT INTO users (id, token_hash, code, name, created, last_seen, role) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+  setRole: db.prepare('UPDATE users SET role = ? WHERE id = ?'),
+  setPush: db.prepare('UPDATE users SET push_id = ? WHERE id = ?'),
+  supporterIds: db.prepare("SELECT f.b FROM friends f JOIN users u ON u.id = f.b WHERE f.a = ? AND u.role = 'supporter'"),
+  groupByCode: db.prepare('SELECT * FROM groups WHERE code = ?'),
+  groupById: db.prepare('SELECT * FROM groups WHERE id = ?'),
+  insertGroup: db.prepare('INSERT INTO groups (id, code, name, owner, created) VALUES (?, ?, ?, ?, ?)'),
+  setGroupOwner: db.prepare('UPDATE groups SET owner = ? WHERE id = ?'),
+  deleteGroup: db.prepare('DELETE FROM groups WHERE id = ?'),
+  addMember: db.prepare('INSERT OR IGNORE INTO group_members (group_id, user_id, joined) VALUES (?, ?, ?)'),
+  removeMember: db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?'),
+  isMember: db.prepare('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?'),
+  memberCount: db.prepare('SELECT COUNT(*) AS n FROM group_members WHERE group_id = ?'),
+  myGroupCount: db.prepare('SELECT COUNT(*) AS n FROM group_members WHERE user_id = ?'),
+  myGroups: db.prepare('SELECT g.* FROM group_members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ? ORDER BY m.joined'),
+  members: db.prepare(`SELECT u.id, u.name, u.role, u.snapshot, u.snapshot_at, u.last_seen, m.joined
+                       FROM group_members m JOIN users u ON u.id = m.user_id WHERE m.group_id = ? ORDER BY m.joined`),
+  oldestMember: db.prepare('SELECT user_id FROM group_members WHERE group_id = ? ORDER BY joined LIMIT 1'),
+  groupMateIds: db.prepare('SELECT DISTINCT m2.user_id AS b FROM group_members m1 JOIN group_members m2 ON m2.group_id = m1.group_id WHERE m1.user_id = ? AND m2.user_id != ?'),
   touch: db.prepare('UPDATE users SET last_seen = ? WHERE id = ?'),
   setName: db.prepare('UPDATE users SET name = ? WHERE id = ?'),
   setSnapshot: db.prepare('UPDATE users SET snapshot = ?, snapshot_at = ?, last_days = ? WHERE id = ?'),
@@ -84,7 +127,7 @@ const q = {
   isFriend: db.prepare('SELECT 1 FROM friends WHERE a = ? AND b = ?'),
   addFriend: db.prepare('INSERT OR IGNORE INTO friends (a, b, created) VALUES (?, ?, ?)'),
   removeFriend: db.prepare('DELETE FROM friends WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)'),
-  friendsOf: db.prepare(`SELECT u.id, u.name, u.snapshot, u.snapshot_at, u.last_seen, f.created
+  friendsOf: db.prepare(`SELECT u.id, u.name, u.role, u.snapshot, u.snapshot_at, u.last_seen, f.created
                          FROM friends f JOIN users u ON u.id = f.b WHERE f.a = ? ORDER BY f.created`),
   insertEvent: db.prepare('INSERT INTO events (to_user, from_user, from_name, type, title, body, at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   inboxSince: db.prepare('SELECT * FROM events WHERE to_user = ? AND id > ? ORDER BY id LIMIT 50'),
@@ -117,6 +160,15 @@ function newCode() {
   }
   throw new Error('code space exhausted');
 }
+// کد گروه هفت‌رقمی است تا با کد دوستی (شش‌رقمی) اشتباه نشود
+function newGroupCode() {
+  for (let i = 0; i < 50; i++) {
+    const c = String(crypto.randomInt(1000000, 10000000));
+    if (!q.groupByCode.get(c)) return c;
+  }
+  throw new Error('group code space exhausted');
+}
+const cleanRole = (r) => (r === 'supporter' ? 'supporter' : 'quitter');
 const num = (v, min, max) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : null);
 const int = (v, min, max) => { const n = num(v, min, max); return n === null ? null : Math.floor(n); };
 
@@ -137,6 +189,9 @@ function cleanSnapshot(s) {
     beaten: int(s.beaten, 0, 1_000_000) ?? 0,
     badges: int(s.badges, 0, 1000) ?? 0,
     method: int(s.method, 0, 1) ?? 0,
+    kind: int(s.kind, 0, 2) ?? 0,          // ۰ سیگار، ۱ قلیان، ۲ هر دو
+    hk: int(s.hk, 0, 1_000_000) ?? 0,      // وعده‌های قلیان نکشیده
+    slips: int(s.slips, 0, 1_000_000) ?? 0, // تعداد لغزش‌ها از روز ترک
   };
 }
 const daysOf = (snap, now = Date.now()) => (snap && snap.quitAt <= now ? Math.floor((now - snap.quitAt) / 86400000) : -1);
@@ -152,8 +207,45 @@ const CHEERS = [
   'ادامه بده، داری عالی پیش میری.',
 ];
 
+function publicGroup(g, u) {
+  const members = q.members.all(g.id).map((m) => ({ ...publicFriend(m), joined: m.joined }));
+  return { id: g.id, code: g.code, name: g.name, owner: g.owner === u.id, created: g.created, members };
+}
+
+// دستورالعمل دستیار: همراه ترک، بر پایه‌ی درمان شناختی-رفتاری و مصاحبه‌ی انگیزشی
+const COACH_PROMPT = `تو «همراه رها» هستی، دستیار فارسی‌زبان اپ ترک سیگار و قلیان «رها».
+- کوتاه، گرم و محترمانه جواب بده (معمولاً کمتر از ۱۲۰ کلمه)، به فارسی روان و بدون اصطلاح نامفهوم.
+- از روش‌های درمان شناختی-رفتاری و مصاحبه‌ی انگیزشی استفاده کن: پرسیدن، بازتاب دادن، شناختن فکرهای فریبنده («فقط یکی»)، برنامه‌ی اگر-آنگاه، تکنیک‌های کوتاه مثل تنفس، صبر ۵ دقیقه‌ای و موج‌سواری هوس.
+- لغزش را شکست نبین؛ بدون سرزنش کمک کن کاربر ادامه دهد و از آن درس بگیرد.
+- درباره‌ی دارو، دوز یا جایگزین نیکوتین فقط اطلاعات کلی بده و بگو با پزشک یا خط مشاوره‌ی ترک دخانیات ۴۰۳۰ مشورت کند. تشخیص پزشکی نده.
+- اگر کاربر از فکر آسیب زدن به خودش یا دیگران، یا یک وضعیت اورژانسی جسمی (درد قفسه‌ی سینه، تنگی نفس شدید) گفت، اول با مهربانی بگو فوراً با اورژانس ۱۱۵، اورژانس اجتماعی ۱۲۳ یا صدای مشاور بهزیستی ۱۴۸۰ تماس بگیرد یا به نزدیک‌ترین بیمارستان برود.
+- فقط درباره‌ی ترک دخانیات، هوس، استرس، خواب، وزن و حال روحیِ مربوط به ترک کمک کن؛ برای موضوع‌های دیگر مؤدبانه بگو کارت این نیست.
+- نگو انسان هستی. اطلاعات شخصی (نام کامل، تلفن، آدرس) نپرس.`;
+
 function addEvent(toId, from, type, title, body) {
   q.insertEvent.run(toId, from ? from.id : null, from ? from.name : null, type, title, body, Date.now());
+  push(toId, title, body);
+}
+function toMany(ids, from, type, title, body) {
+  const seen = new Set();
+  for (const id of ids) { if (seen.has(id) || (from && id === from.id)) continue; seen.add(id); addEvent(id, from, type, title, body); }
+  return seen.size;
+}
+
+// ---------- اعلان فوری (اختیاری) ----------
+// اگر PUSH_PROVIDER=pushe و PUSH_API_KEY و PUSH_APP_ID تنظیم شده باشد و اپ شناسه‌ی دستگاه را فرستاده باشد،
+// هر رویداد علاوه بر صندوق پیام، به‌صورت اعلان فوری هم فرستاده می‌شود. بدون این تنظیمات کاری نمی‌کند.
+function push(toId, title, body) {
+  const provider = process.env.PUSH_PROVIDER, key = process.env.PUSH_API_KEY, appId = process.env.PUSH_APP_ID;
+  if (provider !== 'pushe' || !key || !appId) return;
+  const u = q.userById.get(toId);
+  if (!u || !u.push_id) return;
+  fetch(process.env.PUSH_URL || 'https://api.pushe.co/v2/messaging/notifications/', {
+    method: 'POST',
+    headers: { Authorization: 'Token ' + key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app_ids: [appId], data: { title, content: body }, filters: { device_id: [u.push_id] } }),
+    signal: AbortSignal.timeout(10000),
+  }).catch(() => {});
 }
 function toFriends(user, type, title, body) {
   const ids = q.friendIds.all(user.id);
@@ -194,12 +286,12 @@ function send(res, status, obj) {
   });
   res.end(body);
 }
-function readBody(req) {
+function readBody(req, limit = 8192) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > 8192) { reject(new HttpError(413, 'درخواست بیش از حد بزرگ است')); req.destroy(); return; }
+      if (size > limit) { reject(new HttpError(413, 'درخواست بیش از حد بزرگ است')); req.destroy(); return; }
       chunks.push(c);
     });
     req.on('end', () => {
@@ -225,6 +317,7 @@ function auth(req) {
 const publicFriend = (r) => ({
   id: r.id,
   name: r.name,
+  role: r.role || 'quitter',
   snapshot: r.snapshot ? JSON.parse(r.snapshot) : null,
   snapshotAt: r.snapshot_at || null,
   lastSeen: r.last_seen,
@@ -241,15 +334,16 @@ const routes = {
     const body = await readBody(req);
     const name = cleanName(body.name);
     if (!name) fail(400, 'یک نام نمایشی بنویسید');
+    const role = cleanRole(body.role);
     const token = crypto.randomBytes(32).toString('base64url');
     const id = crypto.randomUUID();
     const code = newCode();
     const now = Date.now();
-    q.insertUser.run(id, sha256(token), code, name, now, now);
-    return { id, token, code, name };
+    q.insertUser.run(id, sha256(token), code, name, now, now, role);
+    return { id, token, code, name, role };
   },
 
-  'GET /api/me': (req) => { const u = auth(req); return { id: u.id, code: u.code, name: u.name }; },
+  'GET /api/me': (req) => { const u = auth(req); return { id: u.id, code: u.code, name: u.name, role: u.role }; },
 
   // به‌روزرسانی نام و خلاصه‌ی پیشرفت
   'PUT /api/me': async (req) => {
@@ -259,6 +353,11 @@ const routes = {
       const name = cleanName(body.name);
       if (!name) fail(400, 'یک نام نمایشی بنویسید');
       q.setName.run(name, u.id); u.name = name;
+    }
+    if (body.role !== undefined) { u.role = cleanRole(body.role); q.setRole.run(u.role, u.id); }
+    if (body.push !== undefined) {
+      const pid = body.push && typeof body.push.id === 'string' ? body.push.id.replace(/[^A-Za-z0-9_:.-]/g, '').slice(0, 200) : '';
+      q.setPush.run(pid || null, u.id);
     }
     let milestone = null;
     if (body.snapshot !== undefined) {
@@ -275,7 +374,7 @@ const routes = {
       }
       q.setSnapshot.run(JSON.stringify(snap), Date.now(), days, u.id);
     }
-    return { ok: true, name: u.name, milestone };
+    return { ok: true, name: u.name, role: u.role, milestone };
   },
 
   // کد دوستی تازه (اگر کد قبلی دست آدم ناخواسته افتاده)
@@ -328,13 +427,30 @@ const routes = {
   },
 
   // «حالم بده، کمکم کنید» به همه‌ی دوستان
-  'POST /api/sos': (req) => {
+  // با { groups: true } اعضای گروه‌های او هم خبردار می‌شوند
+  'POST /api/sos': async (req) => {
     const u = auth(req);
+    const body = await readBody(req);
     const now = Date.now();
     if (now - u.last_sos < 3 * 60_000) fail(429, 'چند دقیقه پیش به دوستانتان خبر دادید؛ به‌زودی جواب می‌دهند');
     q.setSos.run(now, u.id);
-    const n = toFriends(u, 'sos', `${u.name} کمک می‌خواهد`, `${u.name} حالش خوب نیست و هوس سیگار دارد. یک پیام دلگرمی بفرستید یا به او زنگ بزنید.`);
+    const ids = q.friendIds.all(u.id).map((r) => r.b);
+    if (body.groups === true) for (const r of q.groupMateIds.all(u.id, u.id)) ids.push(r.b);
+    const n = toMany(ids, u, 'sos', `${u.name} کمک می‌خواهد`, `${u.name} حالش خوب نیست و هوس سیگار دارد. یک پیام دلگرمی بفرستید یا به او زنگ بزنید.`);
     return { ok: true, notified: n };
+  },
+
+  // خبر لغزش فقط به دوستانی که نقش «حامی» دارند (اگر کاربر خودش بخواهد)
+  'POST /api/slip': async (req) => {
+    const u = auth(req);
+    const body = await readBody(req);
+    if (limited('slip:' + u.id, 6, 86400_000)) fail(429, 'امروز چند بار خبر داده‌اید');
+    const n = int(body.n, 1, 60) ?? 1;
+    const what = body.kind === 'h' ? `${fa(n)} وعده قلیان` : `${fa(n)} نخ سیگار`;
+    const ids = q.supporterIds.all(u.id).map((r) => r.b);
+    const sent = toMany(ids, u, 'slip', `${u.name} لغزش داشت`,
+      `${u.name} امروز ${what} کشید، ولی ثبتش کرد و مسیرش را ادامه می‌دهد. بدون سرزنش، یک پیام دلگرمی بفرستید.`);
+    return { ok: true, notified: sent };
   },
 
   // پیام دلگرمی آماده به یک دوست
@@ -369,6 +485,102 @@ const routes = {
     return { feedback: q.listFeedback.all() };
   },
 
+  // ---------- گروه‌ها ----------
+  'GET /api/groups': (req) => {
+    const u = auth(req);
+    return { groups: q.myGroups.all(u.id).map((g) => publicGroup(g, u)) };
+  },
+  'POST /api/groups': async (req) => {
+    const u = auth(req);
+    const body = await readBody(req);
+    const name = cleanName(body.name);
+    if (!name) fail(400, 'یک نام برای گروه بنویسید');
+    if (q.myGroupCount.get(u.id).n >= MAX_GROUPS) fail(400, `هر نفر حداکثر در ${fa(MAX_GROUPS)} گروه می‌تواند باشد`);
+    if (limited('gnew:' + u.id, 5, 86400_000)) fail(429, 'امروز گروه زیادی ساخته‌اید');
+    const g = { id: crypto.randomUUID(), code: newGroupCode(), name, owner: u.id, created: Date.now() };
+    q.insertGroup.run(g.id, g.code, g.name, g.owner, g.created);
+    q.addMember.run(g.id, u.id, g.created);
+    return { group: publicGroup(g, u) };
+  },
+  'POST /api/groups/join': async (req) => {
+    const u = auth(req);
+    const body = await readBody(req);
+    const code = toLatinDigits(body.code).replace(/\D/g, '');
+    if (code.length !== 7) fail(400, 'کد گروه هفت رقم است');
+    const g = q.groupByCode.get(code);
+    if (!g) {
+      if (limited('gmiss:' + u.id, 15, 3600_000)) fail(429, 'تعداد تلاش‌های ناموفق زیاد شد؛ یک ساعت بعد دوباره امتحان کنید');
+      fail(404, 'گروهی با این کد پیدا نشد');
+    }
+    if (q.isMember.get(g.id, u.id)) fail(409, `از قبل عضو «${g.name}» هستید`);
+    if (q.myGroupCount.get(u.id).n >= MAX_GROUPS) fail(400, `هر نفر حداکثر در ${fa(MAX_GROUPS)} گروه می‌تواند باشد`);
+    if (q.memberCount.get(g.id).n >= MAX_GROUP_MEMBERS) fail(400, `این گروه پر است (حداکثر ${fa(MAX_GROUP_MEMBERS)} نفر)`);
+    q.addMember.run(g.id, u.id, Date.now());
+    toMany(q.members.all(g.id).map((m) => m.id), u, 'group', `عضو تازه در «${g.name}»`, `${u.name} به گروه «${g.name}» پیوست. خوش‌آمد بگویید!`);
+    return { group: publicGroup(g, u) };
+  },
+  'DELETE /api/groups/:id': (req, id) => {
+    const u = auth(req);
+    const g = q.groupById.get(id);
+    if (!g || !q.isMember.get(id, u.id)) fail(404, 'گروه پیدا نشد');
+    q.removeMember.run(id, u.id);
+    if (!q.memberCount.get(id).n) q.deleteGroup.run(id);
+    else if (g.owner === u.id) q.setGroupOwner.run(q.oldestMember.get(id).user_id, id);
+    return { ok: true };
+  },
+  // پیام دلگرمی آماده به همه‌ی اعضای گروه
+  'POST /api/groups/:id/cheer': async (req, id) => {
+    const u = auth(req);
+    const g = q.groupById.get(id);
+    if (!g || !q.isMember.get(id, u.id)) fail(404, 'گروه پیدا نشد');
+    const body = await readBody(req);
+    const kind = int(body.kind, 0, CHEERS.length - 1);
+    if (kind === null || body.kind !== kind) fail(400, 'پیام نامعتبر است');
+    if (limited(`gcheer:${u.id}:${id}`, 6, 3600_000)) fail(429, 'کمی صبر کنید و دوباره بفرستید');
+    const n = toMany(q.members.all(id).map((m) => m.id), u, 'cheer', `${u.name} در «${g.name}»`, CHEERS[kind]);
+    return { ok: true, notified: n };
+  },
+
+  // ---------- دستیار هوش مصنوعی ----------
+  'GET /api/coach': () => ({ enabled: !!(process.env.AI_BASE_URL && process.env.AI_API_KEY) }),
+  'POST /api/coach': async (req) => {
+    const u = auth(req);
+    const base = process.env.AI_BASE_URL, key = process.env.AI_API_KEY, model = process.env.AI_MODEL || 'gpt-4o-mini';
+    if (!base || !key) fail(503, 'دستیار هنوز فعال نشده است');
+    if (limited('coach:' + u.id, Number(process.env.AI_DAILY_LIMIT) || 40, 86400_000)) fail(429, 'امروز به سقف گفت‌وگو رسیدید؛ فردا دوباره سر بزنید');
+    const body = await readBody(req, 32768);
+    const clip = (v, n) => String(v || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, n);
+    const msgs = (Array.isArray(body.messages) ? body.messages : []).slice(-12)
+      .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .map((m) => ({ role: m.role, content: clip(m.content, 1500) }))
+      .filter((m) => m.content);
+    if (!msgs.length || msgs[msgs.length - 1].role !== 'user') fail(400, 'پیامی برای پاسخ نیست');
+    const c = body.context && typeof body.context === 'object' ? body.context : {};
+    const ctx = [
+      int(c.days, -400, 100000) !== null ? `روزهای ترک: ${int(c.days, -400, 100000)}` : '',
+      c.product ? `ترک: ${clip(c.product, 20)}` : '',
+      int(c.cpd, 0, 200) ? `مصرف قبلی: ${int(c.cpd, 0, 200)} نخ در روز` : '',
+      int(c.slips7, 0, 1000) !== null ? `لغزش در ۷ روز اخیر: ${int(c.slips7, 0, 1000)}` : '',
+      int(c.cravings7, 0, 10000) !== null ? `هوس شکست‌خورده در ۷ روز اخیر: ${int(c.cravings7, 0, 10000)}` : '',
+      Array.isArray(c.triggers) && c.triggers.length ? `موقعیت‌های پرخطر: ${c.triggers.slice(0, 5).map((t) => clip(t, 30)).join('، ')}` : '',
+      int(c.ftnd, 0, 10) !== null ? `امتیاز فاگرستروم: ${int(c.ftnd, 0, 10)} از ۱۰` : '',
+    ].filter(Boolean).join(' | ');
+    let r;
+    try {
+      r = await fetch(base.replace(/\/+$/, '') + '/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'system', content: COACH_PROMPT + (ctx ? '\n\nوضعیت کاربر: ' + ctx : '') }, ...msgs], max_tokens: 700, temperature: 0.6 }),
+        signal: AbortSignal.timeout(45000),
+      });
+    } catch { fail(502, 'دستیار الان در دسترس نیست؛ کمی بعد دوباره امتحان کنید'); }
+    if (!r.ok) { console.error('coach upstream', r.status); fail(502, 'دستیار الان در دسترس نیست؛ کمی بعد دوباره امتحان کنید'); }
+    const j = await r.json().catch(() => ({}));
+    const text = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if (!text) fail(502, 'پاسخی دریافت نشد؛ دوباره امتحان کنید');
+    return { reply: String(text).trim().slice(0, 4000) };
+  },
+
   // صندوق پیام‌ها: رویدادهای تازه‌تر از شماره‌ی since
   'GET /api/inbox': (req, _id, url) => {
     const u = auth(req);
@@ -383,6 +595,9 @@ function match(method, pathname) {
   if (exact) return [exact, null];
   const m = /^\/api\/friends\/([0-9a-f-]{36})$/.exec(pathname);
   if (m && method === 'DELETE') return [routes['DELETE /api/friends/:id'], m[1]];
+  const g = /^\/api\/groups\/([0-9a-f-]{36})(\/cheer)?$/.exec(pathname);
+  if (g && method === 'DELETE' && !g[2]) return [routes['DELETE /api/groups/:id'], g[1]];
+  if (g && method === 'POST' && g[2]) return [routes['POST /api/groups/:id/cheer'], g[1]];
   return [null, null];
 }
 

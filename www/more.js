@@ -32,7 +32,8 @@ window.RAHA_MORE = function (A) {
       '<div class="muted" style="font-size:15px;line-height:2">' + s[1] + '</div></div>' +
       '<div class="wl-dots">' + SLIDES.map(function (x, i) { return '<i class="' + (i === slide ? 'on' : '') + '"></i>'; }).join('') + '</div>' +
       (last
-        ? '<button class="primary" data-mo="wl-ftnd">آزمون وابستگی به نیکوتین (یک دقیقه)</button><button class="chip" data-mo="wl-done" style="min-height:50px">مستقیم برو به ساخت برنامه</button>'
+        ? '<button class="primary" data-mo="wl-ftnd">آزمون وابستگی به نیکوتین (یک دقیقه)</button><button class="chip" data-mo="wl-done" style="min-height:50px">مستقیم برو به ساخت برنامه</button>' +
+          '<button class="ghost" data-mo="wl-supporter" style="font-size:14px">خودم سیگار نمی‌کشم؛ می‌خواهم حامی کسی باشم</button>'
         : '<button class="primary" data-mo="wl-next">بعدی</button>') +
       '</div>';
   };
@@ -273,6 +274,7 @@ window.RAHA_MORE = function (A) {
         '<div class="srow"><button class="chip" data-mo="lock-change" style="width:100%">تغییر رمز</button></div>' : '') +
       '</div>';
     var about = '<div class="sec">رها</div><div class="card sgroup">' +
+      '<a class="srow" href="#plus"><div class="col" style="flex:1"><div class="st">رها پلاس</div><div class="muted small">امکانات ویژه و حمایت از رها</div></div>' + I.chev + '</a>' +
       '<a class="srow" href="#ftnd"><div class="col" style="flex:1"><div class="st">آزمون وابستگی به نیکوتین</div><div class="muted small">' +
       (S.ftnd ? 'نتیجه‌ی شما: ' + fa(S.ftnd.score) + ' از ۱۰ (' + ftndLevel(S.ftnd.score)[1] + ')' : 'شش سؤال، یک دقیقه') + '</div></div>' + I.chev + '</a>' +
       (store() ? '<div class="srow"><button class="chip on" data-mo="rate-yes" style="width:100%">امتیاز به رها در ' + storeName() + '</button></div>' : '') +
@@ -314,6 +316,7 @@ window.RAHA_MORE = function (A) {
     if (k === 'wl-next') { slide = Math.min(SLIDES.length - 1, slide + 1); A.render(); }
     else if (k === 'wl-skip') { slide = SLIDES.length - 1; A.render(); }
     else if (k === 'wl-done') welcomeDone('setup');
+    else if (k === 'wl-supporter') { S.mode = 'supporter'; welcomeDone('together'); }
     else if (k === 'wl-ftnd') welcomeDone('ftnd');
     else if (k === 'ftnd-again') { ans = []; A.render(); }
     else if (k === 'ftnd-ok') {

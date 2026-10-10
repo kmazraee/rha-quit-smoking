@@ -1,0 +1,5 @@
+{
+  "platform": "static",
+  "app": "raha-site",
+  "build": { "location": "iran" }
+}

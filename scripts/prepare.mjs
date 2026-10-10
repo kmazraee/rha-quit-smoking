@@ -24,6 +24,9 @@ for (const d of ['cmaps', 'standard_fonts', 'wasm', 'iccs']) {
 }
 copy(path.join(nm, 'jszip/dist/jszip.min.js'), path.join(lib, 'jszip.min.js'));
 copy(path.join(nm, 'epubjs/dist/epub.min.js'), path.join(lib, 'epub.min.js'));
+// کد QR دوستی: ساختن (qrcode-generator) و خواندن با دوربین (jsQR)
+copy(path.join(nm, 'qrcode-generator/qrcode.js'), path.join(lib, 'qrcode.js'));
+copy(path.join(nm, 'jsqr/dist/jsQR.js'), path.join(lib, 'jsQR.js'));
 
 // ---------- ۲) فهرست کتاب‌ها ----------
 const booksDir = path.join(www, 'books');
